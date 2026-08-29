@@ -1,11 +1,13 @@
-# JACKAL Omarchy Edition 2.6.1
+# JACKAL Omarchy Edition 2.6.2
 
 This release keeps the requirements-complete SPARK assurance-policy component,
 exhaustive JavaScript conformance, deterministic release reproduction, and
 public pinned assurance automation from 2.6.0, while tightening the clean-
-checkout reproduction harness to bind the exact full commit before any fetched
-source executes. The mathematical JACKAL runtime remains a separate, pinned
-dependency with its own release epoch and assurance model.
+checkout reproduction harness to eliminate fetched-source execution. It now
+materializes two independent repositories from the validated local commit and
+requires exact Git tree-identity equality before either build. The mathematical
+JACKAL runtime remains a separate, pinned dependency with its own release epoch
+and assurance model.
 
 ## Highlights
 
@@ -27,8 +29,10 @@ dependency with its own release epoch and assurance model.
 - Bidirectional machine-readable requirements and traceability enforcement.
 - Byte-identical clean-checkout release reproduction after removing volatile
   POSIX PAX metadata.
-- Exact full-commit fetch, detached checkout, and pre-execution identity
-  readback in both independent reproduction trees.
+- Exact local commit archive, deterministic independent repository creation,
+  and pre-execution Git tree-identity equality in both reproduction trees.
+- No remote, fetched, or shared-worktree source executes in release
+  reproduction.
 - Pinned GitHub assurance automation and standards-facing proof documentation.
 - Proof-tool installations isolated from the repository checkout in hosted CI.
 - Fail-closed doctor behavior when any canonical function probe is undeclared.

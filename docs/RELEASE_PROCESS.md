@@ -54,11 +54,13 @@ Before publishing, run the complete release gate:
 ```
 
 It adds the full ledger suite and checks `JOP-REL-001` by requiring the full
-lowercase commit identity, initializing two empty checkouts, fetching only that
-exact commit, checking it out detached, verifying `HEAD` again before either
-checkout executes, building independently, comparing archive bytes and digest
-files, and checking each digest. GNU tar POSIX PAX access/change-time records
-are deleted so host filesystem metadata cannot perturb the archive.
+lowercase commit identity, materializing its exact `git archive` into two empty
+directories, initializing independent local repositories with deterministic
+commit metadata, and requiring each local `HEAD` tree identity to equal the
+source commit tree before either build executes. No remote or fetched source is
+executed. The two builds are compared byte for byte, and each detached digest
+is checked. GNU tar POSIX PAX access/change-time records are deleted so host
+filesystem metadata cannot perturb the archive.
 
 ## Tag and GitHub release
 

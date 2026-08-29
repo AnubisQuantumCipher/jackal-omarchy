@@ -3,6 +3,17 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 2.6.2 — 2026-08-29
+
+### Corrected
+
+- Release reproduction no longer fetches or executes any remote source. It
+  materializes the validated commit through local `git archive`, creates two
+  independent repositories with deterministic commit metadata, and refuses
+  unless both local tree identities equal the source commit tree before build.
+- Repository policy tests now reject clone, fetch, remote, and shared-worktree
+  reproduction paths.
+
 ## 2.6.1 — 2026-08-29
 
 ### Corrected

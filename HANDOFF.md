@@ -39,16 +39,17 @@ rename, rebuild, or imply a new mathematical runtime epoch.
 
 ## Public state before the current release candidate
 
-The public repository contains the released `v2.6.0` line. GitHub hosts a
+The public repository contains the released `v2.6.1` line. GitHub hosts a
 non-draft release whose public-download archive passed its detached digest and
 matched the locally validated tag artifact byte for byte. The tag workflow
 passed the mandatory assurance gate and independent release reproduction.
 
 The marketplace submission is open. Its structure validator recognizes
-`khephri.jackal` at `v2.6.0`; the marketplace baseline requested explicit
-full-commit binding in the reproduction harness. That correction is the reason
-for the `v2.6.1` candidate. Maintainer listing approval remains an external
-pending action after the superseding release is submitted.
+`khephri.jackal` at `v2.6.1`; the marketplace baseline treats any fetched
+source execution as requiring manual review even when the fetch is commit-
+pinned. Eliminating fetched-source execution is the reason for the `v2.6.2`
+candidate. Maintainer listing approval remains an external pending action after
+the superseding release is submitted.
 
 Do not move or rewrite the existing tag. Publish a new version for corrections.
 
@@ -59,8 +60,8 @@ pinned workflow push. Continue to use the system keyring or device flow only.
 
 ## Current local release candidate
 
-The local version is `2.6.1`. The additive assurance implementation is
-published in `v2.6.0`; the exact-commit reproduction correction is not yet
+The local version is `2.6.2`. The additive assurance implementation is
+published in `v2.6.1`; the local tree-materialization correction is not yet
 published:
 
 - `formal/src/jackal_assurance_policy.*`: pure SPARK finite policy kernel;
@@ -80,9 +81,10 @@ published:
 The packaging defect in the earlier release path was traced to volatile GNU
 tar POSIX PAX access/change-time records. `scripts/package-release.sh` now
 removes those records and accepts only an absolute canonical release-output
-directory. The `v2.6.1` harness additionally fetches only a validated full
-commit identity into each empty checkout and verifies detached `HEAD` before
-either checkout executes.
+directory. The `v2.6.2` harness materializes the validated local commit into
+two independent repositories and verifies exact Git tree identity before
+either checkout executes; it performs no clone, fetch, remote, or shared-
+worktree operation.
 
 The doctor now emits a failing row for every undeclared canonical probe. It
 cannot report `FUNCTIONAL` merely because a partial inventory contains one

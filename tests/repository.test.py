@@ -165,9 +165,13 @@ reproducibility = (
 for token in (
     "HEAD^{commit}",
     "^[0-9a-f]{40}$",
-    'fetch --quiet --depth=1 exact-source "$COMMIT"',
-    'checkout --quiet --detach "$COMMIT"',
-    '[[ $CHECKED_OUT_COMMIT == "$COMMIT" ]]',
+    'SOURCE_TREE=$(git rev-parse --verify "${COMMIT}^{tree}")',
+    'git archive --format=tar "$COMMIT"',
+    'git init --quiet "$CHECKOUT"',
+    "GIT_AUTHOR_DATE=\"@$COMMIT_TIMESTAMP\"",
+    "GIT_COMMITTER_DATE=\"@$COMMIT_TIMESTAMP\"",
+    "commit --quiet --no-gpg-sign",
+    '[[ $CHECKED_OUT_TREE == "$SOURCE_TREE" ]]',
 ):
     require(
         token in reproducibility,
@@ -177,6 +181,12 @@ require(
     "git clone" not in reproducibility,
     "reproducibility harness must not implicitly check out a movable ref",
 )
+for forbidden_remote_operation in ("git fetch", "git remote", "git worktree"):
+    require(
+        forbidden_remote_operation not in reproducibility,
+        "reproducibility harness must not execute fetched or shared-worktree source: "
+        + forbidden_remote_operation,
+    )
 
 service = (ROOT / "Service.qml").read_text(encoding="utf-8")
 require('root.pluginDir + "/bin/omarchy-jackal"' in service, "service does not use bundled operator CLI")
