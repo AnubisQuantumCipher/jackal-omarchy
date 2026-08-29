@@ -57,6 +57,26 @@ for phrase in (
 ):
     require(phrase in readme, f"README is missing marketplace disclosure: {phrase}")
 
+installation = (ROOT / "docs/INSTALLATION.md").read_text(encoding="utf-8")
+require(
+    "plugins/khephri.jackal.manual-backup" not in installation,
+    "migration guidance creates a duplicate plugin inside the catalog",
+)
+for migration_token in (
+    'backup_root="${XDG_STATE_HOME:-$HOME/.local/state}/jackal/plugin-backups"',
+    'backup_path=$(mktemp -d "$backup_root/khephri.jackal.XXXXXXXX")',
+    'cp -a "$HOME/.config/omarchy/plugins/khephri.jackal/." "$backup_path/"',
+    "Do not place a manifest-bearing backup beside the installed plugin",
+):
+    require(
+        migration_token in installation,
+        f"migration guidance lacks catalog-safe backup rule: {migration_token}",
+    )
+require(
+    "Keep any additional manual backup outside" in readme,
+    "README does not warn against duplicate manifest-bearing backup plugins",
+)
+
 # Relative documentation links are part of the release interface.  Validate
 # them locally without following network links or pretending that a reachable
 # external site is trustworthy.

@@ -39,17 +39,15 @@ rename, rebuild, or imply a new mathematical runtime epoch.
 
 ## Public state before the current release candidate
 
-The public repository contains the released `v2.6.1` line. GitHub hosts a
+The public repository contains the released `v2.6.2` line. GitHub hosts a
 non-draft release whose public-download archive passed its detached digest and
 matched the locally validated tag artifact byte for byte. The tag workflow
 passed the mandatory assurance gate and independent release reproduction.
 
-The marketplace submission is open. Its structure validator recognizes
-`khephri.jackal` at `v2.6.1`; the marketplace baseline treats any fetched
-source execution as requiring manual review even when the fetch is commit-
-pinned. Eliminating fetched-source execution is the reason for the `v2.6.2`
-candidate. Maintainer listing approval remains an external pending action after
-the superseding release is submitted.
+The marketplace submission is open and validated at the exact `v2.6.2` source
+commit. Its validator reports the plugin ready for listing review and its
+automated baseline reports no finding. Maintainer listing approval remains an
+external pending action.
 
 Do not move or rewrite the existing tag. Publish a new version for corrections.
 
@@ -60,9 +58,11 @@ pinned workflow push. Continue to use the system keyring or device flow only.
 
 ## Current local release candidate
 
-The local version is `2.6.2`. The additive assurance implementation is
-published in `v2.6.1`; the local tree-materialization correction is not yet
-published:
+The local version is `2.6.3`. The assurance implementation and no-remote
+tree-materialization correction are published in `v2.6.2`. The local candidate
+corrects the manual-copy migration procedure after a live upgrade exposed that
+a visible backup directory under Omarchy's plugin catalog retains the permanent
+manifest ID and blocks the replacement clone:
 
 - `formal/src/jackal_assurance_policy.*`: pure SPARK finite policy kernel;
 - `formal/prove.sh`: fail-closed GNATprove gate;
@@ -85,6 +85,12 @@ directory. The `v2.6.2` harness materializes the validated local commit into
 two independent repositories and verifies exact Git tree identity before
 either checkout executes; it performs no clone, fetch, remote, or shared-
 worktree operation.
+
+Migration backups now go under the operator state directory rather than beside
+the installed plugin. Repository policy tests require that catalog-safe path and
+warning. The live plugin was recovered without data loss, is Git-managed at the
+released source commit, retains its prior bar placement, and passes the full
+plugin gate and functional doctor.
 
 The doctor now emits a failing row for every undeclared canonical probe. It
 cannot report `FUNCTIONAL` merely because a partial inventory contains one

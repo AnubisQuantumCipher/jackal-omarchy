@@ -89,7 +89,9 @@ omarchy plugin add https://github.com/AnubisQuantumCipher/jackal-omarchy.git --e
 ```
 
 Omarchy backs up a non-Git plugin directory during removal. Review the printed
-backup path before deleting it.
+backup path before deleting it. Keep any additional manual backup outside
+`~/.config/omarchy/plugins`; a visible backup there retains the original
+manifest ID and is therefore discovered as a conflicting plugin.
 
 Full installation and migration guidance is in
 [Installation](docs/INSTALLATION.md).

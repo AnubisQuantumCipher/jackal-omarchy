@@ -3,6 +3,16 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 2.6.3 — 2026-08-29
+
+### Corrected
+
+- Manual-copy migration now stores operator backups outside Omarchy's plugin
+  catalog. A visible manifest-bearing backup under the catalog can retain the
+  permanent plugin ID and block the replacement Git clone.
+- Repository policy tests reject a regression to the conflicting backup path
+  and require the catalog-safe migration procedure and warning.
+
 ## 2.6.2 — 2026-08-29
 
 ### Corrected

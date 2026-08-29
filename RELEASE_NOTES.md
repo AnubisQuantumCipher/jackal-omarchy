@@ -1,11 +1,11 @@
-# JACKAL Omarchy Edition 2.6.2
+# JACKAL Omarchy Edition 2.6.3
 
 This release keeps the requirements-complete SPARK assurance-policy component,
 exhaustive JavaScript conformance, deterministic release reproduction, and
-public pinned assurance automation from 2.6.0, while tightening the clean-
-checkout reproduction harness to eliminate fetched-source execution. It now
-materializes two independent repositories from the validated local commit and
-requires exact Git tree-identity equality before either build. The mathematical
+public pinned assurance automation from 2.6.2, while correcting the manual-copy
+migration procedure discovered during live deployment. Operator backups now
+live outside Omarchy's plugin catalog, preventing an old manifest with the same
+permanent plugin ID from blocking the replacement Git clone. The mathematical
 JACKAL runtime remains a separate, pinned dependency with its own release epoch
 and assurance model.
 
@@ -36,6 +36,8 @@ and assurance model.
 - Pinned GitHub assurance automation and standards-facing proof documentation.
 - Proof-tool installations isolated from the repository checkout in hosted CI.
 - Fail-closed doctor behavior when any canonical function probe is undeclared.
+- Catalog-safe migration from a manually copied plugin, with a regression test
+  that rejects duplicate-ID backup guidance.
 
 ## Compatibility
 

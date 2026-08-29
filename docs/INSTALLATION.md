@@ -47,17 +47,23 @@ bound to its recorded commit.
 ## Migration from the development copy
 
 The existing manually copied plugin is not a Git checkout, so `omarchy plugin
-update` cannot manage it. Preserve any local edits first:
+update` cannot manage it. Preserve any local edits outside Omarchy's plugin
+catalog first:
 
 ```sh
-cp -a "$HOME/.config/omarchy/plugins/khephri.jackal" \
-  "$HOME/.config/omarchy/plugins/khephri.jackal.manual-backup"
+backup_root="${XDG_STATE_HOME:-$HOME/.local/state}/jackal/plugin-backups"
+mkdir -p "$backup_root"
+backup_path=$(mktemp -d "$backup_root/khephri.jackal.XXXXXXXX")
+cp -a "$HOME/.config/omarchy/plugins/khephri.jackal/." "$backup_path/"
 omarchy plugin remove khephri.jackal
 omarchy plugin add https://github.com/AnubisQuantumCipher/jackal-omarchy.git --enable
 ```
 
-The removal command also creates a timestamped backup for a non-Git plugin. Do
-not delete either backup until the new plugin passes live acceptance.
+Do not place a manifest-bearing backup beside the installed plugin under
+`~/.config/omarchy/plugins`: Omarchy discovers every visible directory there,
+so a backup with the same manifest ID blocks the replacement clone. The removal
+command also creates a hidden timestamped backup for a non-Git plugin. Do not
+delete either backup until the new plugin passes live acceptance.
 
 ## Operator configuration
 
