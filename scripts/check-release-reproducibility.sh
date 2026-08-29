@@ -12,7 +12,11 @@ cd "$ROOT"
 }
 
 VERSION=$(tr -d '\n' < VERSION)
-COMMIT=$(git rev-parse --verify HEAD)
+COMMIT=$(git rev-parse --verify 'HEAD^{commit}')
+[[ $COMMIT =~ ^[0-9a-f]{40}$ ]] || {
+  echo "reproducibility refused: HEAD is not a full lowercase commit identity" >&2
+  exit 4
+}
 NAME="jackal-omarchy-v${VERSION}"
 AUDIT_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/jackal-omarchy-repro.XXXXXX")
 
@@ -28,8 +32,15 @@ trap cleanup EXIT HUP INT TERM
 for BUILD_NAME in first second; do
   CHECKOUT="$AUDIT_ROOT/$BUILD_NAME"
   OUTPUT="$AUDIT_ROOT/output-$BUILD_NAME"
-  git clone --quiet --no-local --no-hardlinks "$ROOT" "$CHECKOUT"
+  git init --quiet "$CHECKOUT"
+  git -C "$CHECKOUT" remote add exact-source "$ROOT"
+  git -C "$CHECKOUT" fetch --quiet --depth=1 exact-source "$COMMIT"
   git -C "$CHECKOUT" checkout --quiet --detach "$COMMIT"
+  CHECKED_OUT_COMMIT=$(git -C "$CHECKOUT" rev-parse --verify 'HEAD^{commit}')
+  [[ $CHECKED_OUT_COMMIT == "$COMMIT" ]] || {
+    echo "reproducibility refused: detached checkout identity mismatch" >&2
+    exit 5
+  }
   JACKAL_RELEASE_DIST="$OUTPUT" "$CHECKOUT/scripts/package-release.sh"
 done
 

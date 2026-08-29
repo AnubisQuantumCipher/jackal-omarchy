@@ -159,6 +159,25 @@ for executable in (
 ):
     require(executable.stat().st_mode & stat.S_IXUSR, f"script is not executable: {executable}")
 
+reproducibility = (
+    ROOT / "scripts/check-release-reproducibility.sh"
+).read_text(encoding="utf-8")
+for token in (
+    "HEAD^{commit}",
+    "^[0-9a-f]{40}$",
+    'fetch --quiet --depth=1 exact-source "$COMMIT"',
+    'checkout --quiet --detach "$COMMIT"',
+    '[[ $CHECKED_OUT_COMMIT == "$COMMIT" ]]',
+):
+    require(
+        token in reproducibility,
+        f"reproducibility harness lacks exact-commit binding: {token}",
+    )
+require(
+    "git clone" not in reproducibility,
+    "reproducibility harness must not implicitly check out a movable ref",
+)
+
 service = (ROOT / "Service.qml").read_text(encoding="utf-8")
 require('root.pluginDir + "/bin/omarchy-jackal"' in service, "service does not use bundled operator CLI")
 

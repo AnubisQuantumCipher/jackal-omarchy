@@ -53,10 +53,12 @@ Before publishing, run the complete release gate:
 ./scripts/release-gate.sh
 ```
 
-It adds the full ledger suite and checks `JOP-REL-001` by cloning the committed
-tree twice, building independently, comparing archive bytes and digest files,
-and checking each digest. GNU tar POSIX PAX access/change-time records are
-deleted so host filesystem metadata cannot perturb the archive.
+It adds the full ledger suite and checks `JOP-REL-001` by requiring the full
+lowercase commit identity, initializing two empty checkouts, fetching only that
+exact commit, checking it out detached, verifying `HEAD` again before either
+checkout executes, building independently, comparing archive bytes and digest
+files, and checking each digest. GNU tar POSIX PAX access/change-time records
+are deleted so host filesystem metadata cannot perturb the archive.
 
 ## Tag and GitHub release
 

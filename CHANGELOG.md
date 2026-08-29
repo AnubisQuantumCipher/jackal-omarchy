@@ -3,6 +3,17 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 2.6.1 — 2026-08-29
+
+### Corrected
+
+- The independent release-reproduction harness no longer performs an implicit
+  checkout while cloning. It requires a full lowercase commit identity,
+  fetches only that exact object into each empty checkout, detaches at it, and
+  verifies `HEAD` again before executing either build.
+- Repository policy tests now refuse any regression to a movable-ref or
+  implicitly checked-out release-reproduction path.
+
 ## 2.6.0 — 2026-08-28
 
 ### Added

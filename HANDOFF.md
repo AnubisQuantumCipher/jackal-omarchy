@@ -39,23 +39,29 @@ rename, rebuild, or imply a new mathematical runtime epoch.
 
 ## Public state before the current release candidate
 
-The public repository contains the released `v2.5.0` line. GitHub hosts a
-non-draft release with an archive and detached digest file. The marketplace
-submission is open, carries `submission` and `validated` labels, and its
-automation reported the public main commit ready for listing review. Maintainer
-listing approval is an external pending action.
+The public repository contains the released `v2.6.0` line. GitHub hosts a
+non-draft release whose public-download archive passed its detached digest and
+matched the locally validated tag artifact byte for byte. The tag workflow
+passed the mandatory assurance gate and independent release reproduction.
+
+The marketplace submission is open. Its structure validator recognizes
+`khephri.jackal` at `v2.6.0`; the marketplace baseline requested explicit
+full-commit binding in the reproduction harness. That correction is the reason
+for the `v2.6.1` candidate. Maintainer listing approval remains an external
+pending action after the superseding release is submitted.
 
 Do not move or rewrite the existing tag. Publish a new version for corrections.
 
 The current GitHub CLI session uses browser/device-flow authentication from the
 system keyring. Never use, repeat, store, or commit any credential pasted into
-chat. The current OAuth scopes do not authorize workflow-file pushes; publishing
-the new pinned workflow requires a deliberate GitHub scope refresh.
+chat. The current OAuth session was deliberately refreshed to authorize the
+pinned workflow push. Continue to use the system keyring or device flow only.
 
 ## Current local release candidate
 
-The local version is `2.6.0`. The additive assurance implementation is
-committed on local `main` and is not yet published:
+The local version is `2.6.1`. The additive assurance implementation is
+published in `v2.6.0`; the exact-commit reproduction correction is not yet
+published:
 
 - `formal/src/jackal_assurance_policy.*`: pure SPARK finite policy kernel;
 - `formal/prove.sh`: fail-closed GNATprove gate;
@@ -71,11 +77,12 @@ committed on local `main` and is not yet published:
 - `.github/workflows/assurance.yml`: pinned public automation;
 - `docs/PLATINUM_ASSURANCE.md`: standards-facing claim and boundary.
 
-The packaging defect in the previous release path was traced to volatile GNU
+The packaging defect in the earlier release path was traced to volatile GNU
 tar POSIX PAX access/change-time records. `scripts/package-release.sh` now
 removes those records and accepts only an absolute canonical release-output
-directory. Independent clean-checkout reproduction has passed locally for a
-temporary commit containing that correction.
+directory. The `v2.6.1` harness additionally fetches only a validated full
+commit identity into each empty checkout and verifies detached `HEAD` before
+either checkout executes.
 
 The doctor now emits a failing row for every undeclared canonical probe. It
 cannot report `FUNCTIONAL` merely because a partial inventory contains one
