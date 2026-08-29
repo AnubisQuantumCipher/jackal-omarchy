@@ -134,6 +134,15 @@ for use in re.findall(r"uses:\s*([^\s#]+)", workflow):
         re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", use) is not None,
         f"workflow action is not pinned to an immutable commit: {use}",
     )
+alire_action = (
+    "alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a"
+)
+temporary_prefix = "prefix: ${{ runner.temp }}/jackal-alire"
+require(alire_action in workflow, "workflow lacks the pinned Alire installer")
+require(
+    workflow.count(alire_action) == workflow.count(temporary_prefix),
+    "every Alire install must stay outside the repository checkout",
+)
 
 for executable in (
     ROOT / "bin/omarchy-jackal",

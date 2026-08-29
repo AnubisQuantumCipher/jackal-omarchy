@@ -26,6 +26,7 @@ jobs:
         uses: alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a # v2.0.1
         with:
           crates: gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0
+          prefix: ${{ runner.temp }}/jackal-alire
 
       - name: Run mandatory assurance gate
         env:
@@ -46,6 +47,7 @@ jobs:
         uses: alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a # v2.0.1
         with:
           crates: gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0
+          prefix: ${{ runner.temp }}/jackal-alire
 
       - name: Reproduce release bytes from clean checkouts
         env:

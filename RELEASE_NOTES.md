@@ -27,6 +27,7 @@ assurance model.
 - Byte-identical clean-checkout release reproduction after removing volatile
   POSIX PAX metadata.
 - Pinned GitHub assurance automation and standards-facing proof documentation.
+- Proof-tool installations isolated from the repository checkout in hosted CI.
 - Fail-closed doctor behavior when any canonical function probe is undeclared.
 
 ## Compatibility

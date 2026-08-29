@@ -26,6 +26,8 @@ for the Omarchy integration. JACKAL runtime epochs are versioned independently.
   absent from the runtime inventory.
 - Documentation no longer implies that a component proof establishes
   whole-plugin, platform, hardware, certification, or flight-readiness claims.
+- Hosted proof dependencies install under the runner-temporary directory, so
+  repository-integrity checks inspect only the reviewed release tree.
 
 ## 2.5.0 — 2026-08-28
 
