@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a scoped improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the operator or evidence-boundary problem, not only the desired UI.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: trust
+    attributes:
+      label: Assurance, security, and privacy impact
+      description: State new files, processes, network, clipboard, privilege, or status-class behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: nonclaims
+    attributes:
+      label: Required non-claims
+    validations:
+      required: true

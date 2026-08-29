@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+dist/
+build/
+*.tmp
+*.log
+config/config.json
+config/jackal-expectations.json
+results.jsonl
+receipts/

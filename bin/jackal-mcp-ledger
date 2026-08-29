@@ -1,0 +1,563 @@
+#!/usr/bin/python3 -B
+"""Transparent MCP stdio wrapper that records JACKAL results to a local ledger.
+
+The plugin tree is identity-pinned, so this process stays outside it, executes
+the verified launcher unchanged, and copies the traffic it forwards.  It adds
+recall only; it is not another mathematical engine or MCP tool surface.
+
+Transparency is the hard requirement. Every byte the child writes reaches the
+client, in order, immediately, whether or not the ledger works. All recording is
+best-effort inside try/except: if this file cannot be written, JACKAL still runs.
+A results view is a convenience; the evidence kernel is not.
+
+Ledger: ~/.local/state/jackal/results.jsonl — one JSON object per line, newest
+last, trimmed to MAX_ENTRIES.
+"""
+
+import fcntl
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+# `JACKAL_MCP_LAUNCHER` is the explicit front door. Without it, resolve the
+# source of the installed Codex `jackel` plugin. A user-owned config file may
+# pin a different absolute launcher. No network lookup or weaker implementation
+# is attempted when none of those sources resolves.
+LAUNCHER = os.environ.get("JACKAL_MCP_LAUNCHER", "").strip()
+CONFIG = Path.home() / ".config/jackal-omarchy/config.json"
+MAX_CONFIG_BYTES = 64 * 1024
+LEDGER = Path.home() / ".local/state/jackal/results.jsonl"
+# Enough history to answer "what did it just say?" several turns back, while the
+# whole file stays small enough that the read-modify-write below is cheap and the
+# panel's parse is instant. Not a retention policy — the ledger is not evidence.
+MAX_ENTRIES = 200
+
+# Formal receipts are retained whole, next to the ledger. The ledger row can
+# only ever be RECALL — it is a line in a file this wrapper wrote. The receipt is
+# the artifact that can be taken to a real front door and re-checked against the
+# operator's own expectations, which is the only thing that turns a remembered
+# answer back into a verified one. Keeping the digest without keeping the receipt
+# would name evidence that no longer exists.
+RECEIPTS = LEDGER.parent / "receipts"
+MAX_RECEIPTS = 50
+
+# A 645-digit rational is normal for a certified integral; far larger is not, and
+# 200 such rows would make the ledger slow to parse for no benefit. Bounds beyond
+# this are omitted from the row, never shortened.
+MAX_BOUND_CHARS = 4096
+
+# id -> tool name, learned from the request stream so the response (which carries
+# only the id) can be attributed. Guarded because both pumps touch it.
+_pending: dict = {}
+_lock = threading.Lock()
+
+
+def _configured_launcher() -> str:
+    """Return an operator-pinned launcher path, or an empty string.
+
+    The config is treated as untrusted input: a malformed, oversized, symlinked,
+    or schema-incompatible file contributes no candidate. The MCP launcher
+    performs its own plugin identity check before starting the server.
+    """
+    try:
+        if CONFIG.is_symlink() or not CONFIG.is_file():
+            return ""
+        if CONFIG.stat().st_size < 1 or CONFIG.stat().st_size > MAX_CONFIG_BYTES:
+            return ""
+        payload = json.loads(CONFIG.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("schema") != "jackal-omarchy-config-v1":
+            return ""
+        value = payload.get("mcp_launcher")
+        return value if isinstance(value, str) else ""
+    except Exception:
+        return ""
+
+
+def _codex_launcher() -> str:
+    """Resolve the local Codex plugin source without editing Codex state."""
+    executable = shutil.which("codex")
+    if not executable:
+        return ""
+    try:
+        result = subprocess.run(
+            [executable, "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        payload = json.loads(result.stdout)
+        installed = payload.get("installed") if isinstance(payload, dict) else None
+        if not isinstance(installed, list):
+            return ""
+        for item in installed:
+            if not isinstance(item, dict) or item.get("name") != "jackel":
+                continue
+            source = item.get("source")
+            root = source.get("path") if isinstance(source, dict) else None
+            if isinstance(root, str) and root:
+                return str(Path(root) / "scripts/launch_mcp.sh")
+    except Exception:
+        return ""
+    return ""
+
+
+def _resolve_launcher() -> str:
+    """Resolve one safe regular launcher, or raise a named refusal."""
+    candidates = [LAUNCHER, _configured_launcher(), _codex_launcher()]
+    for value in candidates:
+        if not value:
+            continue
+        try:
+            candidate = Path(value)
+            if not candidate.is_absolute() or candidate.is_symlink():
+                continue
+            canonical = candidate.resolve(strict=True)
+            if canonical != candidate or not canonical.is_file():
+                continue
+            return str(canonical)
+        except OSError:
+            continue
+    raise RuntimeError("JACKAL_MCP_REFUSED reason=core-launcher-not-found")
+
+
+def _record(entry: dict) -> None:
+    """Append one ledger line. Never raises into the stream.
+
+    Trimming to a cap makes this a read-modify-write, which two agents calling
+    JACKAL at once would race: both read N lines, both append one, the second
+    write erases the first entry. `os.replace` makes the write atomic — it does
+    NOT prevent that lost update. An advisory flock over a sibling lock file
+    serializes the whole sequence across processes, which is the actual fix.
+
+    The lock is a separate file, not the ledger itself: the ledger is replaced by
+    rename on every write, so a descriptor held on it would be orphaned the
+    moment another writer finished, and the lock would protect nothing.
+
+    Each writer's own temp file is per-PID so two writers cannot clobber each
+    other's partial output even if the lock is unavailable.
+    """
+    try:
+        LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = LEDGER.with_suffix(".jsonl.lock")
+        with open(lock_path, "a+") as lock:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            except OSError:
+                pass          # no locking available: proceed, last writer wins
+            lines = []
+            if LEDGER.exists():
+                lines = LEDGER.read_text(encoding="utf-8").splitlines()
+            lines.append(json.dumps(entry, separators=(",", ":")))
+            if len(lines) > MAX_ENTRIES:
+                lines = lines[-MAX_ENTRIES:]
+            tmp = LEDGER.with_suffix(".jsonl.tmp.%d" % os.getpid())
+            tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.replace(tmp, LEDGER)
+    except Exception:
+        pass
+
+
+def _note_request(msg: dict) -> None:
+    try:
+        if msg.get("method") != "tools/call":
+            return
+        params = msg.get("params") or {}
+        name = params.get("name")
+        if isinstance(name, str) and "id" in msg:
+            with _lock:
+                _pending[msg["id"]] = {
+                    "tool": name,
+                    "arguments": params.get("arguments") or {},
+                    "started": time.time(),
+                }
+    except Exception:
+        pass
+
+
+def _note_response(msg: dict) -> None:
+    """Turn one tools/call response into a ledger entry.
+
+    JACKAL's own vocabulary is copied through verbatim — status, lane, assurance,
+    non_claims. Nothing here re-derives, summarises or softens a class: a wrapper
+    that reworded `estimated` into something friendlier would be the laundering
+    the kernel exists to refuse. A refusal is recorded as a refusal.
+    """
+    try:
+        if "id" not in msg:
+            return
+        with _lock:
+            call = _pending.pop(msg["id"], None)
+        if call is None:
+            return
+
+        entry = {
+            "ts": time.time(),
+            "tool": call["tool"],
+            "arguments": call["arguments"],
+            # Round trip as seen from here: server startup, snapshot, compute and
+            # transport. NOT the tool's compute time, and named so it cannot be
+            # mistaken for it.
+            "round_trip_ms": int((time.time() - call["started"]) * 1000),
+        }
+
+        if "error" in msg:
+            err = msg.get("error") or {}
+            entry["status"] = "refused"
+            entry["detail"] = str(err.get("message", ""))[:400]
+            _record(entry)
+            return
+
+        result = msg.get("result") or {}
+        payload = result.get("structuredContent")
+        if not isinstance(payload, dict):
+            # Fall back to the text block the adapter mirrors it into.
+            try:
+                blocks = result.get("content") or []
+                payload = json.loads(blocks[0]["text"]) if blocks else {}
+            except Exception:
+                payload = {}
+
+        entry["status"] = str(payload.get("status", "") or "")
+        entry["lane"] = str(payload.get("lane", "") or "")
+        entry["assurance"] = str(payload.get("assurance", "") or "")
+        entry["formal"] = bool(payload.get("formal", False))
+        entry["engine_output"] = str(payload.get("engine_output", "") or "")[:600]
+        display_summary = _structured_display_summary(call["tool"], payload)
+        if display_summary:
+            entry["display_summary"] = display_summary
+        # A refusal is a DIFFERENT payload shape: {status, reason, detail}, with
+        # no engine_output at all. Carrying `reason`/`detail` is not optional —
+        # JACKAL's contract is that a refusal is NAMED, and a panel showing a
+        # bare "refused" with no reason would be strictly worse than silence.
+        if payload.get("reason"):
+            entry["reason"] = str(payload["reason"])[:200]
+        if payload.get("detail"):
+            entry["detail"] = str(payload["detail"])[:400]
+
+        # A formal receipt is a THIRD shape: {status, checker_rerun, receipt}
+        # with no engine_output. Without this the strongest lane JACKAL has
+        # would log a bare class and an empty line.
+        receipt = payload.get("receipt")
+        if isinstance(receipt, dict):
+            _note_receipt(entry, payload, receipt)
+        fields = payload.get("fields")
+        if isinstance(fields, dict):
+            entry["fields"] = {str(k): str(v)[:200] for k, v in list(fields.items())[:12]}
+        nc = payload.get("non_claims")
+        if isinstance(nc, list):
+            entry["non_claims"] = [str(x)[:300] for x in nc[:6]]
+        if result.get("isError"):
+            entry["status"] = entry["status"] or "refused"
+        _record(entry)
+    except Exception:
+        pass
+
+
+def _decimal_interval(value: object) -> str:
+    """Copy one already-rendered closed interval without doing arithmetic."""
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or not all(isinstance(item, str) and 0 < len(item) <= 96 for item in value)
+    ):
+        return ""
+    return "[" + value[0] + ", " + value[1] + "]"
+
+
+def _structured_display_summary(tool: object, payload: object) -> str:
+    """Build recall text only from closed, already-rendered wrapper fields.
+
+    This is presentation, never evidence: no numeric token is parsed, rounded,
+    or recomputed, and the underlying MCP payload passes through untouched.
+    Unknown shapes return an empty string instead of guessed prose.
+    """
+    if tool != "jackal_hellgate_ground_state" or not isinstance(payload, dict):
+        return ""
+    fields = payload.get("fields")
+    if not isinstance(fields, dict):
+        return ""
+    eigenvalue = _decimal_interval(fields.get("eigenvalue_decimal_interval"))
+    ground = fields.get("ground_state_transfer")
+    quartic = ""
+    if isinstance(ground, dict):
+        quartic = _decimal_interval(ground.get("quartic_norm_decimal_interval"))
+    parts = []
+    if eigenvalue:
+        parts.append("E0 " + eigenvalue)
+    if quartic:
+        parts.append("ground integral(u0^4) " + quartic)
+    return " · ".join(parts)[:600]
+
+
+def _retain_receipt(digest: str, receipt: dict) -> str:
+    """Write the receipt to receipts/<digest>.json. Returns the path, or "".
+
+    Content-addressed by the receipt's own digest, so re-running an identical
+    request overwrites rather than accumulates. Best-effort like everything else
+    here: failing to retain must never disturb the answer being forwarded.
+    """
+    try:
+        if not digest or len(digest) != 64 or not all(c in "0123456789abcdef" for c in digest):
+            return ""
+        RECEIPTS.mkdir(parents=True, exist_ok=True)
+        path = RECEIPTS / (digest + ".json")
+        tmp = RECEIPTS / (digest + ".json.tmp.%d" % os.getpid())
+        tmp.write_text(json.dumps(receipt, separators=(",", ":")), encoding="utf-8")
+        os.replace(tmp, path)
+
+        # Oldest-first pruning, so the store stays bounded like the ledger.
+        kept = sorted(RECEIPTS.glob("*.json"), key=lambda q: q.stat().st_mtime)
+        for old in kept[:-MAX_RECEIPTS]:
+            old.unlink(missing_ok=True)
+        return str(path)
+    except Exception:
+        return ""
+
+
+def _outward(value: str, low: bool, digits: int = 12) -> str:
+    """Render an exact rational as a decimal, rounded OUTWARD.
+
+    Outward is the only correct direction: rounding a certified lower bound up,
+    or an upper bound down, would print an interval narrower than the one that
+    was proved — a stronger claim than the certificate supports. Lower bounds go
+    down, upper bounds go up, so the printed interval always still contains the
+    proved one.
+    """
+    from decimal import Decimal, localcontext, ROUND_FLOOR, ROUND_CEILING
+    from fractions import Fraction
+
+    frac = Fraction(value)
+    # Precision must cover the INTEGER part too. `digits` counts decimal places,
+    # but Decimal's context precision counts SIGNIFICANT digits, so a fixed
+    # budget silently fails on a large-magnitude bound: a 30-digit integer
+    # rounded to 3 places needs 33 significant digits, and asking for 15 raises
+    # InvalidOperation. That exception is swallowed upstream, so the visible
+    # symptom was a formal result rendering as a BLANK line — the strongest lane
+    # going quiet again, for a different reason.
+    whole = abs(frac.numerator) // abs(frac.denominator)
+    with localcontext() as ctx:
+        ctx.prec = len(str(whole)) + digits + 12
+        ctx.rounding = ROUND_FLOOR if low else ROUND_CEILING
+        dec = Decimal(frac.numerator) / Decimal(frac.denominator)
+        return str(round(dec, digits))
+
+
+def _note_receipt(entry: dict, payload: dict, receipt: dict) -> None:
+    """Summarise a formal receipt for the ledger without weakening its class.
+
+    The exact rational bounds are kept verbatim; the decimal pair is an OUTWARD
+    rounding of them, marked with `~`, purely so a 645-digit rational can be
+    read on a panel. The status class is untouched.
+    """
+    try:
+        entry["checker"] = str(payload.get("checker_rerun", "") or "")
+        theorem = receipt.get("theorem")
+        if isinstance(theorem, dict) and theorem.get("id"):
+            entry["theorem"] = str(theorem["id"])[:80]
+        digest = receipt.get("receipt_digest_sha256")
+        if digest:
+            entry["receipt_digest_sha256"] = str(digest)[:64]
+            stored = _retain_receipt(str(digest), receipt)
+            if stored:
+                entry["receipt_path"] = stored
+
+        result = receipt.get("result")
+        if not isinstance(result, dict):
+            return
+        lo, hi = result.get("enclosure_lo"), result.get("enclosure_hi")
+        if lo is None or hi is None:
+            return
+        # Verbatim, at full precision — the ledger keeps what was proved.
+        #
+        # These are the only fields here that are NEVER truncated, and that is
+        # deliberate: every other field is prose, but these are numbers, and a
+        # truncated rational is not a shortened value, it is a DIFFERENT and
+        # wrong one. So they are stored whole or not at all. A pathological
+        # receipt whose bounds exceed the budget drops them from the row rather
+        # than corrupting them — the retained receipt still holds the originals,
+        # and the rendered decimal below is computed from the full value either
+        # way.
+        if max(len(str(lo)), len(str(hi))) <= MAX_BOUND_CHARS:
+            entry["enclosure_lo"] = str(lo)
+            entry["enclosure_hi"] = str(hi)
+        else:
+            entry["enclosure_omitted"] = "bounds exceed %d chars; see the receipt" % MAX_BOUND_CHARS
+        entry["engine_output"] = (
+            "enclosure ~ [" + _outward(str(lo), True) + ", " + _outward(str(hi), False) + "]"
+            + ("  checker=" + entry["checker"] if entry.get("checker") else "")
+            + ("  " + entry["theorem"] if entry.get("theorem") else "")
+        )
+    except Exception:
+        pass
+
+
+SNAPSHOT_GLOB = "jackal-codex-runtime-*"
+REAP_MARGIN_SEC = 300
+
+
+def _server_start_times() -> list:
+    """Process-start times of every live JACKAL MCP server on this box."""
+    starts = []
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+            if "mcp/server.py" not in cmdline or "jackel" not in cmdline:
+                continue
+            starts.append(entry.stat().st_mtime)   # ~ process start time
+        except Exception:
+            continue
+    return starts
+
+
+def _reap_orphan_snapshots() -> None:
+    """Delete leaked private runtime snapshots — but only provably dead ones.
+
+    The server copies the whole runtime (~750 MB) into /tmp and removes it on a
+    clean exit. If the server itself is SIGKILLed — a hard client shutdown, or a
+    process group killed out from under it — it never gets to. Fifteen of these
+    once filled /tmp entirely and JACKAL then refused to start at all
+    (`private runtime snapshot creation refused`), which is a silent, total
+    outage caused by nothing but disk.
+
+    The wrapper cannot prevent it: SIGKILL is uncatchable, and it lands on the
+    server, not here. So it is cleaned up instead, under a rule that cannot
+    delete a snapshot in use: a directory created BEFORE the oldest currently
+    running server started cannot belong to any of them. With no server running,
+    every snapshot is by definition an orphan. A margin is subtracted so a
+    server still mid-startup is never raced.
+    """
+    try:
+        starts = _server_start_times()
+        cutoff = (min(starts) if starts else time.time()) - REAP_MARGIN_SEC
+        for path in pathlib.Path("/tmp").glob(SNAPSHOT_GLOB):
+            try:
+                if not path.is_dir() or path.stat().st_mtime >= cutoff:
+                    continue
+                if path.stat().st_uid != os.getuid():
+                    continue
+                shutil.rmtree(path, ignore_errors=True)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+def _pump(src, dst, observer) -> None:
+    """Forward src -> dst line by line, flushing every line, observing a copy.
+
+    Forwarding happens FIRST and unconditionally; observation cannot delay or
+    drop a byte.
+    """
+    try:
+        for line in src:
+            dst.write(line)
+            dst.flush()
+            try:
+                observer(json.loads(line.decode("utf-8", "replace")))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    finally:
+        try:
+            dst.close()
+        except Exception:
+            pass
+
+
+def _pump_input_fd(src_fd: int, dst, observer) -> None:
+    """Forward stdin from an unbuffered descriptor and observe complete lines.
+
+    The input pump is deliberately a daemon because a client can keep its stdin
+    open after the child has failed.  A daemon blocked inside
+    ``sys.stdin.buffer`` can hold CPython's buffered-reader lock during process
+    teardown and abort the wrapper.  Raw ``os.read`` has no such interpreter
+    lock.  Bytes are still forwarded before best-effort observation.
+    """
+    pending = bytearray()
+    try:
+        while True:
+            chunk = os.read(src_fd, 64 * 1024)
+            if not chunk:
+                break
+            dst.write(chunk)
+            dst.flush()
+            pending.extend(chunk)
+            while True:
+                newline = pending.find(b"\n")
+                if newline < 0:
+                    break
+                line = bytes(pending[: newline + 1])
+                del pending[: newline + 1]
+                try:
+                    observer(json.loads(line.decode("utf-8", "replace")))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    finally:
+        try:
+            os.close(src_fd)
+        except OSError:
+            pass
+        try:
+            dst.close()
+        except Exception:
+            pass
+
+
+def main() -> int:
+    try:
+        launcher = _resolve_launcher()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 127
+    child = subprocess.Popen(
+        ["/bin/sh", launcher],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=None,          # stderr passes straight through, untouched
+        bufsize=0,
+        # The server is put in its OWN session, deliberately.
+        #
+        # It copies the whole runtime (~750 MB) into /tmp and removes it only on
+        # a clean exit. The one thing that defeats that is SIGKILL landing on the
+        # server itself, which happens when a client's process GROUP is killed —
+        # and SIGKILL is uncatchable, so no handler, in any language, can clean
+        # up after it. The fix is not to catch the signal but to not receive it:
+        # in its own session the server is outside the group being killed.
+        #
+        # It then still shuts down correctly, because killing this wrapper closes
+        # the stdin pipe, the server reads EOF, and EOF is its ordinary exit path
+        # — the one that removes the snapshot. An uncatchable kill is converted
+        # into the graceful case rather than defended against.
+        start_new_session=True,
+    )
+    # Off the critical path: reaping must never delay the handshake, and its
+    # failure must never matter.
+    threading.Thread(target=_reap_orphan_snapshots, daemon=True).start()
+    try:
+        input_fd = os.dup(sys.stdin.fileno())
+    except (OSError, ValueError):
+        child.terminate()
+        child.wait()
+        return 1
+    up = threading.Thread(
+        target=_pump_input_fd, args=(input_fd, child.stdin, _note_request), daemon=True
+    )
+    up.start()
+    _pump(child.stdout, sys.stdout.buffer, _note_response)
+    return child.wait()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

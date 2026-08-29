@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible JACKAL Omarchy Edition defect
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private receipts, operator expectations, or sensitive clipboard content.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Omarchy version and host architecture
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: Preserve returned statuses and refusal reasons verbatim after removing sensitive data.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private data, receipt contents, and operator authorization.
+          required: true
+        - label: This is not a vulnerability report; security issues use private reporting.
+          required: true

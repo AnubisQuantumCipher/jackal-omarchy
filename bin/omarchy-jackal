@@ -1,0 +1,715 @@
+#!/usr/bin/python3 -B
+"""Operator CLI for the JACKAL Omarchy Edition.
+
+The CLI keeps three claims separate:
+
+* presence: an installed runtime locator and package directory were observed;
+* integrity: the JACKAL provisioner's pinned tree check and self-test passed;
+* function: canonical tools executed in this invocation at their declared class.
+
+It never treats installation as function, and it never promotes a JACKAL status.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import importlib.util
+import json
+import os
+import platform
+import shutil
+import stat
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+# Importing the identity-pinned core provisioner must not write bytecode into
+# that plugin tree. A changed tree would make the next MCP launch refuse.
+sys.dont_write_bytecode = True
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+USER_HOME = Path.home()
+DATA_HOME = Path(os.environ.get("XDG_DATA_HOME", USER_HOME / ".local/share"))
+CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", USER_HOME / ".config"))
+LOCATOR_PATH = Path(
+    os.environ.get(
+        "JACKAL_RUNTIME_LOCATOR",
+        DATA_HOME / "JACKAL/codex-plugin/runtime.json",
+    )
+)
+CONFIG_PATH = CONFIG_HOME / "jackal-omarchy/config.json"
+DEFAULT_ANUBIS = USER_HOME / ".local/bin/anubis"
+MAX_JSON_BYTES = 1024 * 1024
+COMMAND_TIMEOUT_SEC = 180
+SELFTEST_TIMEOUT_SEC = 30
+
+
+class OperatorRefusal(RuntimeError):
+    """A named operator-layer refusal, never a JACKAL mathematical status."""
+
+
+@dataclass(frozen=True)
+class RuntimeContext:
+    root: Path
+    launcher: Path
+    locator: dict[str, Any] | None
+    package: dict[str, Any]
+
+    @property
+    def epoch(self) -> str:
+        return str(self.package["epoch"])
+
+
+CANONICAL_PROBES: dict[str, tuple[str, dict[str, str] | None, str]] = {
+    "exact": (
+        "jackal_exact",
+        {"expression": "0.1+0.2"},
+        "exact",
+    ),
+    "formal-bounded": (
+        "jackal_sqrt_rat_bound",
+        {"expression": "sqrt(x)", "input_lo": "0", "input_hi": "4"},
+        "formal-bounded",
+    ),
+    "bounded": (
+        "jackal_integrate_bound",
+        {
+            "expression": "x^2",
+            "input_lo": "0",
+            "input_hi": "1",
+            "tolerance": "1e-6",
+        },
+        "bounded",
+    ),
+    "checked": ("jackal_diff", {"expression": "x^2"}, "checked"),
+    "estimated": (
+        "jackal_solve",
+        {"expression": "x^2-4", "input_lo": "0", "input_hi": "5"},
+        "estimated",
+    ),
+    "number-theory": ("jackal_prime_cert", {"n": "97"}, "exact"),
+    "decision": (
+        "jackal_decision_rank",
+        {
+            "decision_id": "doctor_probe",
+            "criterion": "latency_ms",
+            "sense": "min",
+            "options": "alpha 3 beta 1",
+        },
+        "exact",
+    ),
+    "structural": ("jackal_test_exists", None, "structural-exact"),
+}
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def json_print(value: Any) -> None:
+    print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def _regular_file(path: Path, *, label: str) -> None:
+    try:
+        info = path.lstat()
+    except OSError as error:
+        raise OperatorRefusal(f"{label}-missing") from error
+    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+        raise OperatorRefusal(f"{label}-not-regular")
+
+
+def read_json(path: Path, *, label: str, required: bool = True) -> dict[str, Any]:
+    if not path.exists() and not path.is_symlink():
+        if required:
+            raise OperatorRefusal(f"{label}-missing")
+        return {}
+    _regular_file(path, label=label)
+    try:
+        size = path.stat().st_size
+        if size < 1 or size > MAX_JSON_BYTES:
+            raise OperatorRefusal(f"{label}-size-refused")
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise OperatorRefusal(f"{label}-invalid-json") from error
+    if not isinstance(value, dict):
+        raise OperatorRefusal(f"{label}-not-object")
+    return value
+
+
+def load_config() -> dict[str, Any]:
+    value = read_json(CONFIG_PATH, label="operator-config", required=False)
+    if value and value.get("schema") != "jackal-omarchy-config-v1":
+        raise OperatorRefusal("operator-config-schema-unsupported")
+    return value
+
+
+def file_sha256(path: Path) -> str | None:
+    try:
+        _regular_file(path, label="hash-target")
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            while block := handle.read(1024 * 1024):
+                digest.update(block)
+        return digest.hexdigest()
+    except (OSError, OperatorRefusal):
+        return None
+
+
+def runtime_context() -> RuntimeContext:
+    explicit = os.environ.get("JACKAL_HOME", "").strip()
+    locator: dict[str, Any] | None = None
+    if explicit:
+        candidate = Path(explicit)
+    else:
+        locator = read_json(LOCATOR_PATH, label="runtime-locator")
+        if locator.get("schema") != "jackal-codex-plugin-runtime-v1":
+            raise OperatorRefusal("runtime-locator-schema-unsupported")
+        raw_path = locator.get("runtime_path")
+        if not isinstance(raw_path, str) or not raw_path:
+            raise OperatorRefusal("runtime-locator-path-invalid")
+        candidate = Path(raw_path)
+
+    if not candidate.is_absolute():
+        raise OperatorRefusal("runtime-path-not-absolute")
+    try:
+        root = candidate.resolve(strict=True)
+    except OSError as error:
+        raise OperatorRefusal("runtime-not-installed") from error
+    if root != candidate:
+        raise OperatorRefusal("runtime-path-not-canonical")
+    try:
+        root_info = root.lstat()
+    except OSError as error:
+        raise OperatorRefusal("runtime-not-installed") from error
+    if root.is_symlink() or not stat.S_ISDIR(root_info.st_mode):
+        raise OperatorRefusal("runtime-root-not-directory")
+
+    package = read_json(root / ".jackal-package.json", label="runtime-package")
+    if package.get("schema") != "jackal-runtime-package-v1":
+        raise OperatorRefusal("runtime-package-schema-unsupported")
+    for field in ("epoch", "asset", "package_sha256", "package_size"):
+        if field not in package:
+            raise OperatorRefusal(f"runtime-package-{field}-missing")
+
+    if locator is not None:
+        for field in ("epoch", "package_sha256", "package_size"):
+            if locator.get(field) != package.get(field):
+                raise OperatorRefusal(f"runtime-locator-{field}-mismatch")
+
+    launcher = root / "plugin/hermes/jackal_hermes"
+    _regular_file(launcher, label="runtime-launcher")
+    if not os.access(launcher, os.X_OK):
+        raise OperatorRefusal("runtime-launcher-not-executable")
+    return RuntimeContext(root=root, launcher=launcher, locator=locator, package=package)
+
+
+def capability_inventory(context: RuntimeContext) -> dict[str, Any]:
+    value = read_json(
+        context.root / "capability_inventory_v1.json",
+        label="capability-inventory",
+    )
+    tools = value.get("tools")
+    if not isinstance(tools, list) or not all(isinstance(item, dict) for item in tools):
+        raise OperatorRefusal("capability-inventory-tools-invalid")
+    if value.get("tool_count") != len(tools):
+        raise OperatorRefusal("capability-inventory-count-mismatch")
+    names = [item.get("name") for item in tools]
+    if not all(isinstance(name, str) and name for name in names):
+        raise OperatorRefusal("capability-inventory-name-invalid")
+    if len(names) != len(set(names)):
+        raise OperatorRefusal("capability-inventory-name-duplicate")
+    return value
+
+
+def _anubis_path(config: dict[str, Any]) -> Path:
+    raw = os.environ.get("ANUBIS_BIN", "").strip() or str(
+        config.get("anubis_path", DEFAULT_ANUBIS)
+    )
+    return Path(raw).expanduser()
+
+
+def call_tool(
+    context: RuntimeContext,
+    name: str,
+    arguments: dict[str, str],
+    *,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    environment = dict(os.environ)
+    environment["ANUBIS_BIN"] = str(_anubis_path(config))
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        result = subprocess.run(
+            [str(context.launcher), "call", name, json.dumps(arguments, separators=(",", ":"))],
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SEC,
+            env=environment,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {
+            "status": "transport-refused",
+            "reason": "tool-execution-failed",
+            "detail": type(error).__name__,
+        }
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {
+            "status": "transport-refused",
+            "reason": "tool-output-unparsable",
+            "returncode": result.returncode,
+            "stderr": result.stderr[:300],
+        }
+    return payload if isinstance(payload, dict) else {
+        "status": "transport-refused",
+        "reason": "tool-output-not-object",
+    }
+
+
+def _selftest(context: RuntimeContext) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            [str(context.launcher), "selftest"],
+            capture_output=True,
+            text=True,
+            timeout=SELFTEST_TIMEOUT_SEC,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, type(error).__name__
+    matched = (
+        result.returncode == 0
+        and "plugin_hermes.identity_match=true" in result.stdout.splitlines()
+    )
+    return matched, result.stderr[:300]
+
+
+def _tool_index(inventory: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(item["name"]): item for item in inventory["tools"]}
+
+
+def _structural_probe(context: RuntimeContext) -> dict[str, str]:
+    relative = "tools/exact_verify.py"
+    digest = file_sha256(context.root / relative)
+    if not digest:
+        raise OperatorRefusal("structural-probe-fixture-missing")
+    return {
+        "file_path": relative,
+        "file_sha256": digest,
+        "symbol": "__init__",
+        "declaration_line": "122",
+        "declaration_count": "2",
+    }
+
+
+def command_identity(_: argparse.Namespace) -> int:
+    try:
+        context = runtime_context()
+        inventory = capability_inventory(context)
+    except OperatorRefusal as refusal:
+        return print_refusal(str(refusal))
+
+    executables: dict[str, dict[str, Any]] = {}
+    file_command = Path("/usr/bin/file")
+    for name in (
+        "jackal-native",
+        "jackal_cert_check",
+        "jackal_gaussian_check",
+        "jackal_int_cert_check",
+        "jackal_cert_check_v170",
+    ):
+        target = context.root / name
+        if not target.exists():
+            continue
+        kind = "unavailable"
+        if file_command.exists():
+            result = subprocess.run(
+                [str(file_command), "-b", str(target)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            kind = result.stdout.split(",", 1)[0].strip()
+        executables[name] = {"sha256": file_sha256(target), "format": kind}
+
+    json_print(
+        {
+            "schema": "jackal-omarchy-identity-v1",
+            "observed_at": utc_now(),
+            "package": context.package,
+            "host": {"system": platform.system(), "machine": platform.machine()},
+            "runtime": str(context.root),
+            "capability_inventory_sha256": file_sha256(
+                context.root / "capability_inventory_v1.json"
+            ),
+            "tool_count": inventory["tool_count"],
+            "native_executables": executables,
+            "non_claims": [
+                "observed digests are not publisher authentication",
+                "identity output does not establish runtime function",
+                "file-format inspection is informational",
+            ],
+        }
+    )
+    return 0
+
+
+def command_inventory(_: argparse.Namespace) -> int:
+    try:
+        context = runtime_context()
+        inventory = capability_inventory(context)
+    except OperatorRefusal as refusal:
+        return print_refusal(str(refusal))
+
+    profiles: dict[str, int] = {}
+    for profile in ("core", "formal", "full"):
+        path = context.root / f"plugin/hermes/profiles/{profile}.json"
+        if not path.exists():
+            continue
+        data = read_json(path, label=f"profile-{profile}")
+        members = data.get("tools") or data.get("tool_names")
+        if isinstance(members, list):
+            profiles[profile] = len(members)
+    json_print(
+        {
+            "schema": "jackal-omarchy-inventory-v1",
+            "runtime_epoch": context.epoch,
+            "tool_count": inventory["tool_count"],
+            "tools": [item["name"] for item in inventory["tools"]],
+            "profiles": profiles,
+            "non_claims": ["inventory declaration is not execution evidence"],
+        }
+    )
+    return 0
+
+
+def _doctor_document() -> dict[str, Any]:
+    document: dict[str, Any] = {
+        "schema": "jackal-omarchy-doctor-v1",
+        "ts": utc_now(),
+        "installed": False,
+        "host": {"system": platform.system(), "machine": platform.machine()},
+        "capability": {},
+        "function": {},
+        "identity_match": False,
+        "doctor_verdict": "INDETERMINATE",
+        "non_claims": [
+            "finite probes do not establish universal correctness",
+            "function applies only to tools and inputs executed in this invocation",
+            "runtime identity does not establish operating-system or hardware correctness",
+        ],
+    }
+    try:
+        config = load_config()
+        context = runtime_context()
+        inventory = capability_inventory(context)
+    except OperatorRefusal as refusal:
+        document["error"] = str(refusal)
+        document["doctor_verdict"] = (
+            "NOT_INSTALLED" if str(refusal) == "runtime-not-installed" else "REFUSED"
+        )
+        return document
+
+    document["installed"] = True
+    document["capability"] = {
+        "package_epoch": context.epoch,
+        "package_sha256": context.package.get("package_sha256"),
+        "runtime_path": str(context.root),
+        "inventory_sha256": file_sha256(context.root / "capability_inventory_v1.json"),
+        "z3_present": Path("/usr/bin/z3").is_file(),
+        "anubis_compiler_present": _anubis_path(config).is_file(),
+    }
+
+    index = _tool_index(inventory)
+    rows: dict[str, Any] = {}
+    for family, (tool, arguments, expected) in CANONICAL_PROBES.items():
+        declaration = index.get(tool)
+        if declaration is None:
+            continue
+        try:
+            actual_arguments = (
+                _structural_probe(context) if arguments is None else dict(arguments)
+            )
+        except OperatorRefusal as refusal:
+            rows[family] = {
+                "tool": tool,
+                "executed_status": "operator-refused",
+                "expected": expected,
+                "functional_pass": False,
+                "reason": str(refusal),
+            }
+            continue
+        response = call_tool(context, tool, actual_arguments, config=config)
+        status = response.get("status")
+        declared = declaration.get("status_classes")
+        declared_statuses = declared if isinstance(declared, list) else []
+        rows[family] = {
+            "tool": tool,
+            "executed_status": status,
+            "expected": expected,
+            "declared_statuses": declared_statuses,
+            "functional_pass": status == expected and expected in declared_statuses,
+        }
+        if response.get("reason"):
+            rows[family]["reason"] = response["reason"]
+    document["function"] = rows
+
+    identity_match, selftest_detail = _selftest(context)
+    document["identity_match"] = identity_match
+    if selftest_detail:
+        document["identity_detail"] = selftest_detail
+    passed = bool(rows) and all(row["functional_pass"] for row in rows.values())
+    document["doctor_verdict"] = (
+        "FUNCTIONAL" if passed and identity_match else "DEGRADED"
+    )
+    return document
+
+
+def command_doctor(arguments: argparse.Namespace) -> int:
+    document = _doctor_document()
+    if arguments.json:
+        json_print(document)
+    else:
+        print(f"JACKAL Omarchy doctor — {document['doctor_verdict']}")
+        print(
+            "  host: "
+            + str(document["host"]["system"])
+            + "/"
+            + str(document["host"]["machine"])
+        )
+        capability = document.get("capability") or {}
+        if capability.get("package_epoch"):
+            print(f"  runtime: {capability['package_epoch']}  {capability['runtime_path']}")
+        if document.get("error"):
+            print(f"  refusal: {document['error']}")
+        for family, row in document.get("function", {}).items():
+            marker = "PASS" if row.get("functional_pass") else "DEGRADED"
+            print(
+                f"  [{marker}] {family:<16} {row['tool']} -> "
+                f"{row.get('executed_status')}"
+            )
+    return 0 if document["doctor_verdict"] == "FUNCTIONAL" else 1
+
+
+def _codex_plugin_source() -> Path | None:
+    executable = shutil.which("codex")
+    if not executable:
+        return None
+    try:
+        result = subprocess.run(
+            [executable, "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=SELFTEST_TIMEOUT_SEC,
+            check=False,
+        )
+        payload = json.loads(result.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    installed = payload.get("installed") if isinstance(payload, dict) else None
+    if not isinstance(installed, list):
+        return None
+    for item in installed:
+        if not isinstance(item, dict) or item.get("name") != "jackel":
+            continue
+        source = item.get("source")
+        path = source.get("path") if isinstance(source, dict) else None
+        if isinstance(path, str) and path:
+            return Path(path)
+    return None
+
+
+def _provisioner_path(config: dict[str, Any]) -> Path:
+    explicit = os.environ.get("JACKAL_PROVISIONER", "").strip()
+    if explicit:
+        candidates = [Path(explicit)]
+    elif isinstance(config.get("provisioner_path"), str):
+        candidates = [Path(str(config["provisioner_path"])).expanduser()]
+    else:
+        source = _codex_plugin_source()
+        candidates = [source / "scripts/provision_runtime.py"] if source else []
+    for candidate in candidates:
+        if not candidate.is_absolute():
+            continue
+        try:
+            _regular_file(candidate, label="core-provisioner")
+        except OperatorRefusal:
+            continue
+        return candidate.resolve()
+    raise OperatorRefusal("core-provisioner-not-found")
+
+
+def _load_provisioner(path: Path) -> Any:
+    verifier = path.parent / "verify_plugin.py"
+    if not verifier.exists():
+        raise OperatorRefusal("core-plugin-verifier-not-found")
+    result = subprocess.run(
+        [sys.executable, "-B", str(verifier)],
+        capture_output=True,
+        text=True,
+        timeout=SELFTEST_TIMEOUT_SEC,
+        check=False,
+    )
+    if result.returncode != 0 or "plugin_identity=verified" not in result.stdout:
+        raise OperatorRefusal("core-plugin-identity-refused")
+
+    spec = importlib.util.spec_from_file_location("jackal_core_provisioner", path)
+    if spec is None or spec.loader is None:
+        raise OperatorRefusal("core-provisioner-import-refused")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    except Exception as error:
+        sys.modules.pop(spec.name, None)
+        raise OperatorRefusal("core-provisioner-import-refused") from error
+    return module
+
+
+def command_verify(_: argparse.Namespace) -> int:
+    try:
+        config = load_config()
+        context = runtime_context()
+        provisioner_path = _provisioner_path(config)
+        provisioner = _load_provisioner(provisioner_path)
+        host_tag = provisioner.resolve_host(platform.system(), platform.machine())
+        pin = provisioner.release_pin(host_tag)
+        for field in ("package_sha256", "package_size", "asset"):
+            if context.package.get(field) != pin.get(field):
+                raise OperatorRefusal(f"runtime-package-{field}-pin-mismatch")
+        provisioner.validate_runtime(
+            context.root,
+            expected_tree_sha256=pin["sha256sums_sha256"],
+        )
+    except OperatorRefusal as refusal:
+        json_print(
+            {
+                "schema": "jackal-omarchy-runtime-verification-v1",
+                "verify": "REFUSED",
+                "raised_by": "jackal-omarchy",
+                "reason": str(refusal),
+            }
+        )
+        return 1
+    except Exception as error:
+        json_print(
+            {
+                "schema": "jackal-omarchy-runtime-verification-v1",
+                "verify": "REFUSED",
+                "raised_by": "jackal-core-provisioner",
+                "reason": str(error),
+            }
+        )
+        return 1
+
+    json_print(
+        {
+            "schema": "jackal-omarchy-runtime-verification-v1",
+            "verify": "PASS",
+            "runtime": str(context.root),
+            "runtime_epoch": context.epoch,
+            "host_tag": host_tag,
+            "provisioner": str(provisioner_path),
+            "non_claims": [
+                "integrity and self-test are not publisher authentication",
+                "verification does not prove the compiler, operating system, hardware, or supply chain",
+                "verification does not establish universal mathematical correctness",
+            ],
+        }
+    )
+    return 0
+
+
+def command_paths(_: argparse.Namespace) -> int:
+    json_print(
+        {
+            "schema": "jackal-omarchy-paths-v1",
+            "plugin_root": str(PLUGIN_ROOT),
+            "runtime_locator": str(LOCATOR_PATH),
+            "operator_config": str(CONFIG_PATH),
+            "ledger": str(USER_HOME / ".local/state/jackal/results.jsonl"),
+        }
+    )
+    return 0
+
+
+def command_uninstall(arguments: argparse.Namespace) -> int:
+    """Remove only the runtime named by the locator; require explicit consent."""
+    if not arguments.yes:
+        json_print(
+            {
+                "uninstall": "REFUSED",
+                "reason": "explicit-yes-required",
+                "non_claims": ["no files were removed"],
+            }
+        )
+        return 1
+    try:
+        context = runtime_context()
+        expected_parent = (DATA_HOME / "JACKAL/runtimes").resolve(strict=True)
+        if context.root.parent != expected_parent:
+            raise OperatorRefusal("runtime-path-outside-managed-root")
+        shutil.rmtree(context.root)
+        if context.locator is not None and LOCATOR_PATH.exists():
+            LOCATOR_PATH.unlink()
+    except (OSError, OperatorRefusal) as error:
+        json_print({"uninstall": "REFUSED", "reason": str(error)})
+        return 1
+    json_print({"uninstall": "done", "removed": str(context.root)})
+    return 0
+
+
+def print_refusal(reason: str) -> int:
+    json_print(
+        {
+            "schema": "jackal-omarchy-operator-refusal-v1",
+            "status": "refused",
+            "raised_by": "jackal-omarchy",
+            "reason": reason,
+        }
+    )
+    return 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="omarchy-jackal")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="JACKAL Omarchy Edition 2.5.0",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("identity", help="observe installed runtime identities")
+    commands.add_parser("inventory", help="print the installed capability declaration")
+    doctor = commands.add_parser("doctor", help="execute canonical function probes")
+    doctor.add_argument("--json", action="store_true")
+    commands.add_parser("verify", help="run the core provisioner's pinned tree check")
+    commands.add_parser("paths", help="print resolved operator paths")
+    uninstall = commands.add_parser("uninstall", help="remove the located JACKAL runtime")
+    uninstall.add_argument("--yes", action="store_true")
+    return parser
+
+
+def main() -> int:
+    arguments = build_parser().parse_args()
+    commands = {
+        "identity": command_identity,
+        "inventory": command_inventory,
+        "doctor": command_doctor,
+        "verify": command_verify,
+        "paths": command_paths,
+        "uninstall": command_uninstall,
+    }
+    return commands[arguments.command](arguments)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

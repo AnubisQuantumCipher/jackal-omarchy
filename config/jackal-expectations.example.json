@@ -1,0 +1,17 @@
+{
+  "schema": "khephri.jackal-expectations-v1",
+  "receipt": {
+    "expected_release_epoch": "v1.7.2",
+    "expected_command": "range-bound-cert",
+    "expected_expression": "sqrt(x)",
+    "expected_input_lo": "2",
+    "expected_input_hi": "3"
+  },
+  "bundle": {
+    "expected_release_epoch": "v1.6.0",
+    "expected_policy_sha256": "replace-with-an-operator-authorized-digest",
+    "expected_root_proposition": {
+      "replace": "with the proposition the operator authorized"
+    }
+  }
+}
