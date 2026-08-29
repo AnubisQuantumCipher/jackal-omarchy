@@ -54,8 +54,8 @@ the new pinned workflow requires a deliberate GitHub scope refresh.
 
 ## Current local release candidate
 
-The local version is `2.6.0`. The working tree intentionally contains the
-following additive assurance changes and is not yet published:
+The local version is `2.6.0`. The additive assurance implementation is
+committed on local `main` and is not yet published:
 
 - `formal/src/jackal_assurance_policy.*`: pure SPARK finite policy kernel;
 - `formal/prove.sh`: fail-closed GNATprove gate;
@@ -84,7 +84,7 @@ are unit tested.
 
 ## Formal claim boundary
 
-The local GNATprove run discharged the obligations for
+The local GNATprove run discharged every reported obligation for
 `Jackal_Assurance_Policy`, including its functional postconditions, termination,
 and targeted run-time checks. The gate rejects any unproved or justified check
 and rejects `pragma Assume` and `pragma Annotate` in the formal tree.
@@ -95,6 +95,7 @@ The claim is component-scoped SPARK Platinum for these allocated requirements:
 - `JOP-STATE-002`
 - `JOP-ASSURANCE-001`
 - `JOP-CAP-001`
+- `JOP-DOCTOR-001`
 
 The full QML/JavaScript/Python/shell/Linux plugin remains
 `product_claim.status=not-established`. Exhaustive differential conformance is
@@ -150,15 +151,17 @@ unsigned tag or checksum is transport integrity, not publisher authentication.
 
 ## Core JACKAL continuation
 
-The core repository contains a pre-existing SPARK interval-envelope component
-under `proofs/spark/hellgate_interval`, plus broader Lean, Anubis, numerical,
-and runtime evidence. Its working tree contains unrelated ongoing changes and
-must not be reset, mass-staged, or overwritten.
+The core feature branch now contains two surgical assurance commits. The first
+allocates and proves the complete fixed-scale HELLGATE interval-admission
+kernel, adds bidirectional requirements traceability, and makes its GNATprove
+gate fail on assumptions, justifications, warnings, or skipped units. The
+second adds a total SPARK claim-assurance policy kernel for finite axis meets,
+rule caps, and artifact conjunction, together with exhaustive differential
+vectors against both the producer and independently isolated verifier.
 
-The next core assurance step is to give the interval component unique allocated
-requirements, strengthen its proof gate to fail on assumptions/justifications,
-add bidirectional traceability, and reproduce GNATprove. That can establish a
-Platinum claim only for the allocated interval kernel. Whole-JACKAL Platinum
+Those commits do not absorb or overwrite the broader dirty worktree, which
+contains unrelated ongoing core, Codex-plugin, measurement, graphing, and STEM
+changes. Do not reset or mass-stage that tree. Whole-JACKAL Platinum still
 requires specification and refinement closure across every published tool,
 parser, wrapper, checker, runtime, compiler, and platform assumption.
 
