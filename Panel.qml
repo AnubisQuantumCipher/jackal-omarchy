@@ -780,7 +780,7 @@ Panel {
 
                   Rectangle {
                     width: parent.width
-                    height: Math.round(width * 0.42)
+                    height: Math.round(width * 0.52)
                     radius: Style.cornerRadius
                     color: "#0a0b0d"
                     border.color: Qt.alpha(root.telemetry, 0.22)
@@ -818,9 +818,27 @@ Panel {
                       visible: jackal.graphPoints.length > 0
 
                       readonly property var points: jackal.graphPoints
-                      onPointsChanged: requestPaint()
+                      property real hoverX: -1
+                      property bool hovering: false
+
+                      onPointsChanged: { hovering = false; requestPaint() }
                       onWidthChanged: requestPaint()
                       onHeightChanged: requestPaint()
+
+                      MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        onPositionChanged: function(mouse) {
+                          graphCanvas.hoverX = mouse.x
+                          graphCanvas.hovering = true
+                          graphCanvas.requestPaint()
+                        }
+                        onExited: {
+                          graphCanvas.hovering = false
+                          graphCanvas.requestPaint()
+                        }
+                      }
 
                       onPaint: {
                         var ctx = getContext("2d")
@@ -828,68 +846,188 @@ Panel {
                         var pts = points
                         if (!pts || pts.length === 0) return
                         var w = width, h = height
-                        var xLo = pts[0].x, xHi = pts[pts.length - 1].x
-                        var yLo = Infinity, yHi = -Infinity
-                        for (var i = 0; i < pts.length; i++) {
-                          if (pts[i].y === null) continue
-                          if (pts[i].y < yLo) yLo = pts[i].y
-                          if (pts[i].y > yHi) yHi = pts[i].y
-                        }
-                        if (yLo === Infinity) {
-                          ctx.fillStyle = "#8b8f94"
-                          ctx.font = Style.font.caption + "px " + root.fontFamily
-                          ctx.fillText("every sample refused — the curve is honest about that", 12, h / 2)
+                        var tickFont = Style.font.body + "px " + root.fontFamily
+                        var extremes = Model.graphExtremes(pts)
+                        if (extremes.max === null) {
+                          ctx.fillStyle = Qt.alpha(root.telemetry, 0.85)
+                          ctx.font = Style.font.body + "px " + root.fontFamily
+                          var refusedText = "every sample refused — the curve is honest about that"
+                          ctx.fillText(refusedText, (w - ctx.measureText(refusedText).width) / 2, h / 2)
                           return
                         }
+                        var xLo = pts[0].x, xHi = pts[pts.length - 1].x
+                        var yLo = extremes.min.y, yHi = extremes.max.y
                         if (yHi - yLo < 1e-12) { yHi += 1; yLo -= 1 }
                         var pad = (yHi - yLo) * 0.08
                         yLo -= pad; yHi += pad
-                        function px(x) { return (x - xLo) / (xHi - xLo) * w }
-                        function py(y) { return h - (y - yLo) / (yHi - yLo) * h }
 
-                        // Instrument grid.
-                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.10)
+                        // Instrument ticks first: the left gutter is sized by
+                        // the widest label it must hold, so numbers are never
+                        // squeezed against the curve.
+                        var xTicks = Model.graphTicks(xLo, xHi, 7)
+                        var yTicks = Model.graphTicks(yLo, yHi, 5)
+                        ctx.font = tickFont
+                        var yLabelWidth = 0
+                        for (var yl = 0; yl < yTicks.ticks.length; yl++) {
+                          var candidate = ctx.measureText(Model.graphTickLabel(yTicks.ticks[yl], yTicks.step)).width
+                          if (candidate > yLabelWidth) yLabelWidth = candidate
+                        }
+                        var gutterL = Math.ceil(yLabelWidth) + 14
+                        var gutterB = Style.font.body + 12
+                        var top = 10, right = 12
+                        var plotW = w - gutterL - right
+                        var plotH = h - top - gutterB
+                        if (plotW < 60 || plotH < 40) return
+                        function px(x) { return gutterL + (x - xLo) / (xHi - xLo) * plotW }
+                        function py(y) { return top + plotH - (y - yLo) / (yHi - yLo) * plotH }
+
+                        // Plot backdrop and frame.
+                        ctx.fillStyle = "#0d0e11"
+                        ctx.fillRect(gutterL, top, plotW, plotH)
+
+                        ctx.save()
+                        ctx.beginPath()
+                        ctx.rect(gutterL, top, plotW, plotH)
+                        ctx.clip()
+
+                        // Refused ground is shaded before anything is drawn
+                        // over it: the band owns exactly the refused samples.
+                        var runs = Model.graphRefusedRuns(pts)
+                        ctx.fillStyle = Qt.alpha(root.reentry, 0.08)
+                        for (var r = 0; r < runs.length; r++) {
+                          var bx0 = px(runs[r].x0), bx1 = px(runs[r].x1)
+                          ctx.fillRect(bx0, top, bx1 - bx0, plotH)
+                        }
+
+                        // Gridlines land on named ticks only.
+                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.09)
                         ctx.lineWidth = 1
-                        for (var gx = 1; gx < 6; gx++) {
-                          ctx.beginPath()
-                          ctx.moveTo(w * gx / 6, 0); ctx.lineTo(w * gx / 6, h); ctx.stroke()
+                        for (var gx = 0; gx < xTicks.ticks.length; gx++) {
+                          var gxp = Math.round(px(xTicks.ticks[gx])) + 0.5
+                          ctx.beginPath(); ctx.moveTo(gxp, top); ctx.lineTo(gxp, top + plotH); ctx.stroke()
                         }
-                        for (var gy = 1; gy < 4; gy++) {
-                          ctx.beginPath()
-                          ctx.moveTo(0, h * gy / 4); ctx.lineTo(w, h * gy / 4); ctx.stroke()
+                        for (var gy = 0; gy < yTicks.ticks.length; gy++) {
+                          var gyp = Math.round(py(yTicks.ticks[gy])) + 0.5
+                          ctx.beginPath(); ctx.moveTo(gutterL, gyp); ctx.lineTo(gutterL + plotW, gyp); ctx.stroke()
                         }
 
-                        // Axes where zero is inside the window.
-                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.38)
+                        // Zero axes read stronger than the grid.
+                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.42)
                         if (xLo < 0 && xHi > 0) {
-                          ctx.beginPath(); ctx.moveTo(px(0), 0); ctx.lineTo(px(0), h); ctx.stroke()
+                          var zx = Math.round(px(0)) + 0.5
+                          ctx.beginPath(); ctx.moveTo(zx, top); ctx.lineTo(zx, top + plotH); ctx.stroke()
                         }
                         if (yLo < 0 && yHi > 0) {
-                          ctx.beginPath(); ctx.moveTo(0, py(0)); ctx.lineTo(w, py(0)); ctx.stroke()
+                          var zy = Math.round(py(0)) + 0.5
+                          ctx.beginPath(); ctx.moveTo(gutterL, zy); ctx.lineTo(gutterL + plotW, zy); ctx.stroke()
                         }
 
                         // The sweep. A refused sample lifts the pen: a break,
-                        // never an interpolated bridge over a refusal.
-                        ctx.strokeStyle = root.reentry
-                        ctx.lineWidth = 2
-                        ctx.beginPath()
-                        var drawing = false
-                        for (var p = 0; p < pts.length; p++) {
-                          if (pts[p].y === null) { drawing = false; continue }
-                          var cx = px(pts[p].x), cy = py(pts[p].y)
-                          if (!drawing) { ctx.moveTo(cx, cy); drawing = true }
-                          else ctx.lineTo(cx, cy)
+                        // never an interpolated bridge over a refusal. A soft
+                        // under-glow then the core stroke keeps the trace
+                        // readable against the grid without inventing weight.
+                        ctx.lineJoin = "round"
+                        ctx.lineCap = "round"
+                        for (var pass = 0; pass < 2; pass++) {
+                          ctx.strokeStyle = pass === 0 ? Qt.alpha(root.reentry, 0.22) : root.reentry
+                          ctx.lineWidth = pass === 0 ? 5 : 2.2
+                          ctx.beginPath()
+                          var drawing = false
+                          for (var p = 0; p < pts.length; p++) {
+                            if (pts[p].y === null) { drawing = false; continue }
+                            var cx = px(pts[p].x), cy = py(pts[p].y)
+                            if (!drawing) { ctx.moveTo(cx, cy); drawing = true }
+                            else ctx.lineTo(cx, cy)
+                          }
+                          ctx.stroke()
                         }
-                        ctx.stroke()
 
-                        // Window labels, so the plot names its own frame.
-                        ctx.fillStyle = "#8b8f94"
-                        ctx.font = Style.font.caption + "px " + root.fontFamily
-                        ctx.fillText(Model.graphNumberText(xLo), 4, h - 4)
-                        var xHiText = Model.graphNumberText(xHi)
-                        ctx.fillText(xHiText, w - ctx.measureText(xHiText).width - 4, h - 4)
-                        ctx.fillText(Model.graphNumberText(yHi), 4, 12)
-                        ctx.fillText(Model.graphNumberText(yLo), 4, h - 16)
+                        // Where the pen lifted, say so with endpoint dots.
+                        ctx.fillStyle = root.reentry
+                        for (var e = 0; e < pts.length; e++) {
+                          if (pts[e].y === null) continue
+                          var prevRefused = e > 0 && pts[e - 1].y === null
+                          var nextRefused = e + 1 < pts.length && pts[e + 1].y === null
+                          if (!prevRefused && !nextRefused) continue
+                          ctx.beginPath()
+                          ctx.arc(px(pts[e].x), py(pts[e].y), 2.6, 0, Math.PI * 2)
+                          ctx.fill()
+                        }
+
+                        // Observed extremes, marked where they actually sit —
+                        // evaluator samples, never window padding.
+                        function markExtreme(pointAt, word) {
+                          var mx = px(pointAt.x), my = py(pointAt.y)
+                          ctx.fillStyle = root.signal
+                          ctx.beginPath(); ctx.arc(mx, my, 2.8, 0, Math.PI * 2); ctx.fill()
+                          ctx.font = tickFont
+                          var labelText = word + " " + Model.graphTickLabel(pointAt.y, yTicks.step / 1000)
+                          var tw = ctx.measureText(labelText).width
+                          var lx = Math.max(gutterL + 4, Math.min(mx - tw / 2, gutterL + plotW - tw - 4))
+                          var ly = word === "max" ? Math.max(top + Style.font.body + 2, my - 8)
+                                                  : Math.min(top + plotH - 5, my + Style.font.body + 6)
+                          ctx.fillStyle = Qt.alpha(root.signal, 0.92)
+                          ctx.fillText(labelText, lx, ly)
+                        }
+                        markExtreme(extremes.max, "max")
+                        if (extremes.min.y !== extremes.max.y) markExtreme(extremes.min, "min")
+
+                        // Hover: the nearest evaluator sample, named as one.
+                        // The crosshair never interpolates — between samples
+                        // there is no claim.
+                        if (hovering && hoverX >= gutterL && hoverX <= gutterL + plotW) {
+                          var idx = Math.round((hoverX - gutterL) / plotW * (pts.length - 1))
+                          idx = Math.max(0, Math.min(pts.length - 1, idx))
+                          var sample = pts[idx]
+                          var hx = Math.round(px(sample.x)) + 0.5
+                          ctx.strokeStyle = Qt.alpha(root.signal, 0.35)
+                          ctx.lineWidth = 1
+                          ctx.beginPath(); ctx.moveTo(hx, top); ctx.lineTo(hx, top + plotH); ctx.stroke()
+                          if (sample.y !== null) {
+                            ctx.fillStyle = root.signal
+                            ctx.beginPath(); ctx.arc(px(sample.x), py(sample.y), 3.4, 0, Math.PI * 2); ctx.fill()
+                          }
+                          var readout = Model.graphHoverText(sample, idx, pts.length)
+                          ctx.font = tickFont
+                          var rw = ctx.measureText(readout).width
+                          var boxW = rw + 16, boxH = Style.font.body + 12
+                          var boxX = gutterL + plotW - boxW - 6, boxY = top + 6
+                          ctx.fillStyle = Qt.alpha("#0a0b0d", 0.9)
+                          ctx.fillRect(boxX, boxY, boxW, boxH)
+                          ctx.strokeStyle = Qt.alpha(root.telemetry, 0.35)
+                          ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1)
+                          ctx.fillStyle = root.signal
+                          ctx.fillText(readout, boxX + 8, boxY + boxH - 8)
+                        }
+
+                        ctx.restore()
+
+                        // Frame and tick labels live outside the clip so the
+                        // gutters stay clean.
+                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.2)
+                        ctx.lineWidth = 1
+                        ctx.strokeRect(gutterL + 0.5, top + 0.5, plotW - 1, plotH - 1)
+
+                        ctx.font = tickFont
+                        ctx.fillStyle = Qt.alpha(root.telemetry, 0.85)
+                        for (var ylab = 0; ylab < yTicks.ticks.length; ylab++) {
+                          var yv = yTicks.ticks[ylab]
+                          var yText = Model.graphTickLabel(yv, yTicks.step)
+                          var yPix = py(yv)
+                          if (yPix < top + 4 || yPix > top + plotH - 2) continue
+                          ctx.fillText(yText, gutterL - 8 - ctx.measureText(yText).width, yPix + 4)
+                        }
+                        var lastLabelEnd = -Infinity
+                        for (var xlab = 0; xlab < xTicks.ticks.length; xlab++) {
+                          var xv = xTicks.ticks[xlab]
+                          var xText = Model.graphTickLabel(xv, xTicks.step)
+                          var xw = ctx.measureText(xText).width
+                          var xPix = px(xv) - xw / 2
+                          if (xPix < lastLabelEnd + 10) continue
+                          if (xPix + xw > w - 2) continue
+                          ctx.fillText(xText, xPix, h - 5)
+                          lastLabelEnd = xPix + xw
+                        }
                       }
                     }
                   }
@@ -898,10 +1036,11 @@ Panel {
                     width: parent.width
                     visible: jackal.graphError !== "" || jackal.graphMeta !== ""
                     text: jackal.graphError !== "" ? jackal.graphError
-                          : jackal.graphExpression + "  ·  " + jackal.graphMeta
-                    color: jackal.graphError !== "" ? root.urgent : root.dim
+                          : "f(x) = " + jackal.graphExpression + "   ·   " + jackal.graphMeta
+                          + "   ·   window [" + jackal.graphXMin + ", " + jackal.graphXMax + "]"
+                    color: jackal.graphError !== "" ? root.urgent : root.telemetry
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: Style.font.bodySmall
                     wrapMode: Text.WordWrap
                   }
                 }

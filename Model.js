@@ -908,3 +908,73 @@ function graphMetaText(points) {
   if (refused > 0) meta += " · " + refused + " refused (curve breaks)"
   return meta
 }
+
+// Instrument ticks: gridlines land on 1/2/5 × 10^k values so every line the
+// eye crosses names a number a person can hold. Returns the step so labels
+// can choose exactly the decimals the step needs — no ten-digit corner noise.
+function graphTicks(lo, hi, target) {
+  if (!isFinite(lo) || !isFinite(hi) || !(hi > lo)) return { step: 1, ticks: [] }
+  var raw = (hi - lo) / Math.max(2, Number(target) || 5)
+  var magnitude = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10))
+  var norm = raw / magnitude
+  var step = magnitude * (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10)
+  var ticks = []
+  var first = Math.ceil(lo / step - 1e-9) * step
+  for (var value = first; value <= hi + step * 1e-9 && ticks.length < 12; value += step) {
+    var snapped = Math.abs(value) < step * 1e-9 ? 0 : value
+    ticks.push(snapped)
+  }
+  return { step: step, ticks: ticks }
+}
+
+// A tick label carries exactly the precision its step justifies.
+function graphTickLabel(value, step) {
+  var decimals = 0
+  if (isFinite(step) && step > 0 && step < 1) {
+    decimals = Math.min(6, Math.ceil(-Math.log(step) / Math.LN10))
+  }
+  var text = Number(value).toFixed(decimals)
+  if (/^-0(\.0+)?$/.test(text)) text = text.slice(1)
+  return text
+}
+
+// Contiguous refused runs as x spans, widened half a sample step each side,
+// so the band covers the ground the refusal actually owns — the samples that
+// refused — and no more.
+function graphRefusedRuns(points) {
+  var runs = []
+  if (!points || points.length < 2) return runs
+  var half = (points[points.length - 1].x - points[0].x) / (points.length - 1) / 2
+  var start = -1
+  for (var i = 0; i <= points.length; i++) {
+    var refused = i < points.length && points[i].y === null
+    if (refused && start < 0) start = i
+    if (!refused && start >= 0) {
+      runs.push({ x0: points[start].x - half, x1: points[i - 1].x + half })
+      start = -1
+    }
+  }
+  return runs
+}
+
+// The sweep's own extremes — evaluator samples, not window padding — so the
+// instrument can mark where the observed maximum and minimum actually sit.
+function graphExtremes(points) {
+  var min = null, max = null
+  for (var i = 0; i < (points ? points.length : 0); i++) {
+    var p = points[i]
+    if (p.y === null) continue
+    if (min === null || p.y < min.y) min = { x: p.x, y: p.y }
+    if (max === null || p.y > max.y) max = { x: p.x, y: p.y }
+  }
+  return { min: min, max: max }
+}
+
+// Hover readout text: the nearest evaluator sample, named as a sample. The
+// crosshair never interpolates — between samples there is no claim.
+function graphHoverText(point, index, total) {
+  if (!point) return ""
+  var base = "x " + graphNumberText(point.x)
+  if (point.y === null) return base + " · refused · sample " + (index + 1) + "/" + total
+  return base + " · f " + graphNumberText(point.y) + " · sample " + (index + 1) + "/" + total
+}

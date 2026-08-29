@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "khephri.jackal",
   "name": "JACKAL + THOTH",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "author": "Khephri Labs / Anubis Quantum Cipher",
   "license": "MIT",
   "description": "Open-source graphite-and-crimson evidence surface for JACKAL: live function probes, assurance-preserving result recall, runtime verification routing, and an explicitly non-evidentiary graph preview. THOTH remains JACKAL's integrated measurement/provenance subsystem.",

@@ -3,6 +3,22 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 2.7.1 — 2026-08-29
+
+### Improved
+
+- Instrument-grade graph deck. The plot now sizes a left gutter to its own
+  labels and draws 1/2/5-decade tick gridlines with step-scaled precision, so
+  every line the eye crosses names a short readable number instead of the old
+  ten-digit corner text. Refused runs are shaded bands that own exactly the
+  refused samples; segment endpoints where the pen lifted carry dots; the
+  observed max and min are marked where they sit (evaluator samples, never
+  window padding); the trace gets a soft under-glow; and a hover crosshair
+  reads out the nearest evaluator sample by number — it never interpolates,
+  because between samples there is no claim. The pure tick/band/extreme/hover
+  logic lives in Model.js under 60+ new checks, which immediately caught and
+  killed a "-0.0" tick label.
+
 ## 2.7.0 — 2026-08-29
 
 ### Added
