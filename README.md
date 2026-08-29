@@ -55,9 +55,9 @@ relabeling or rebuilding the evidence kernel.
 - Anubis and Z3 only for the JACKAL lanes that declare those dependencies.
 
 The plugin runs unsandboxed inside the long-lived Omarchy shell, as all Omarchy
-shell plugins do. Review the repository before installation. It does not require
-`sudo`, `pkexec`, a system service, or a network connection during normal panel
-operation.
+shell plugins do. Review the repository before installation. Normal panel
+operation requests no elevated operating-system access, installs no system
+service, and opens no network connection.
 
 See [Dependencies](docs/DEPENDENCIES.md) for the complete runtime and development
 inventory.
