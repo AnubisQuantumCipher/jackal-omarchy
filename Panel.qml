@@ -8,6 +8,7 @@ import qs.Ui
 import "Model.js" as Model
 
 // JACKAL + THOTH in the bar.
+// JOP-UI-001: returned assurance vocabulary is rendered without promotion.
 //
 // JACKAL is a mathematical evidence kernel: every answer declares what kind of
 // answer it is, refusal is a first-class answer, and two independent things are

@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# JOP-REL-001: release bytes are normalized for reproducible packaging.
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$ROOT"
 
 VERSION=$(tr -d '\n' < VERSION)
@@ -24,7 +26,17 @@ MANIFEST_VERSION=$(python3 -B -c 'import json; print(json.load(open("manifest.js
 ./scripts/check.sh
 
 NAME="jackal-omarchy-v${VERSION}"
-DIST="$ROOT/dist"
+DIST_INPUT=${JACKAL_RELEASE_DIST:-"$ROOT/dist"}
+[[ $DIST_INPUT == /* ]] || {
+  echo "release refused: output directory must be an absolute path" >&2
+  exit 2
+}
+mkdir -p "$DIST_INPUT"
+DIST=$(cd -- "$DIST_INPUT" && pwd -P)
+[[ $DIST == "$DIST_INPUT" ]] || {
+  echo "release refused: output directory must be canonical" >&2
+  exit 2
+}
 ARCHIVE="$DIST/$NAME.tar.gz"
 DIGEST="$ARCHIVE.sha256"
 
@@ -39,7 +51,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-mkdir -p "$STAGE/$NAME" "$DIST"
+mkdir -p "$STAGE/$NAME"
 git archive --format=tar HEAD | tar -xf - -C "$STAGE/$NAME"
 
 (
@@ -55,6 +67,7 @@ tar \
   --mtime="@$SOURCE_DATE_EPOCH" \
   --owner=0 --group=0 --numeric-owner \
   --format=posix \
+  --pax-option=delete=atime,delete=ctime \
   -C "$STAGE" -cf - "$NAME" \
   | gzip -n > "$ARCHIVE"
 

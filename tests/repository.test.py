@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Marketplace, release, and repository policy checks."""
+"""Marketplace, release, and repository policy checks (JOP-CI-001)."""
 
 from __future__ import annotations
 
@@ -28,6 +28,10 @@ required = [
     "Service.qml",
     "Model.js",
     "verify_artifact.py",
+    "assurance/requirements.json",
+    "formal/jackal_assurance.gpr",
+    "tests/formal_operator_conformance.test.py",
+    ".github/workflows/assurance.yml",
     "preview.png",
     "bin/omarchy-jackal",
     "bin/jackal-mcp-ledger",
@@ -116,7 +120,31 @@ require(width > 0 and height > 0, "preview dimensions are invalid")
 require(len(preview) < 50 * 1024 * 1024, "preview exceeds marketplace byte limit")
 require(width * height < 40_000_000, "preview exceeds marketplace pixel limit")
 
-for executable in (ROOT / "bin/omarchy-jackal", ROOT / "bin/jackal-mcp-ledger", ROOT / "scripts/check.sh", ROOT / "scripts/package-release.sh"):
+workflow = (ROOT / ".github/workflows/assurance.yml").read_text(encoding="utf-8")
+require("JOP-CI-001" in workflow, "workflow lacks its assurance requirement link")
+require("JACKAL_REQUIRE_FORMAL" in workflow, "workflow does not require formal proof")
+for toolchain_pin in (
+    "gnat_native=16.1.0",
+    "gprbuild=26.0.1",
+    "gnatprove=16.1.0",
+):
+    require(toolchain_pin in workflow, f"workflow lacks toolchain pin: {toolchain_pin}")
+for use in re.findall(r"uses:\s*([^\s#]+)", workflow):
+    require(
+        re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", use) is not None,
+        f"workflow action is not pinned to an immutable commit: {use}",
+    )
+
+for executable in (
+    ROOT / "bin/omarchy-jackal",
+    ROOT / "bin/jackal-mcp-ledger",
+    ROOT / "scripts/check.sh",
+    ROOT / "scripts/check-formal.sh",
+    ROOT / "scripts/check-traceability.py",
+    ROOT / "scripts/package-release.sh",
+    ROOT / "scripts/check-release-reproducibility.sh",
+    ROOT / "scripts/release-gate.sh",
+):
     require(executable.stat().st_mode & stat.S_IXUSR, f"script is not executable: {executable}")
 
 service = (ROOT / "Service.qml").read_text(encoding="utf-8")

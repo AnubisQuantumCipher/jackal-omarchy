@@ -1,0 +1,53 @@
+name: Assurance
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assurance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-and-proof:
+    name: Repository, SPARK proof, and conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # JOP-CI-001: every third-party action is pinned to an immutable commit.
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install GNAT, GPRbuild, and GNATprove
+        uses: alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a # v2.0.1
+        with:
+          crates: gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0
+
+      - name: Run mandatory assurance gate
+        env:
+          JACKAL_REQUIRE_FORMAL: "1"
+        run: ./scripts/check.sh
+
+  reproducible-release:
+    name: Independent release reproduction
+    if: github.event_name != 'pull_request'
+    needs: repository-and-proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install GNAT, GPRbuild, and GNATprove
+        uses: alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a # v2.0.1
+        with:
+          crates: gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0
+
+      - name: Reproduce release bytes from clean checkouts
+        env:
+          JACKAL_REQUIRE_FORMAL: "1"
+        run: ./scripts/check-release-reproducibility.sh

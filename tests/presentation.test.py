@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for the integrated THOTH identity and graph preview."""
+"""Regression checks for THOTH, graph, and JOP-UI-001 presentation policy."""
 
 from __future__ import annotations
 

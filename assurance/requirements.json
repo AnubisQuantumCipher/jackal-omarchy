@@ -1,0 +1,180 @@
+{
+  "schema": "jackal-omarchy-assurance-requirements-v1",
+  "system": "JACKAL + THOTH Omarchy plugin",
+  "product_claim": {
+    "status": "not-established",
+    "reason": "The product includes QML, JavaScript, Python, shell, Qt, Quickshell, Linux, and an external JACKAL runtime outside the SPARK proof boundary."
+  },
+  "component_claims": [
+    {
+      "component": "formal/src/jackal_assurance_policy",
+      "target": "SPARK Platinum",
+      "status": "proved-local",
+      "requirement_ids": [
+        "JOP-DOCTOR-001",
+        "JOP-STATE-001",
+        "JOP-STATE-002",
+        "JOP-ASSURANCE-001",
+        "JOP-CAP-001"
+      ],
+      "boundary": "Pure finite policy functions only; no parser, process, operating-system, UI-rendering, compiler, or source-to-JavaScript refinement claim."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "JOP-DOCTOR-001",
+      "shall": "The SPARK policy kernel shall classify every finite doctor-policy input and shall return Functional if and only if discovery is ready, canonical probe rows are present and complete, every probe passes, and runtime identity matches.",
+      "method": "spark-platinum",
+      "status": "proved",
+      "allocation": [
+        "formal/src/jackal_assurance_policy.ads",
+        "formal/src/jackal_assurance_policy.adb"
+      ],
+      "verification": [
+        "formal/prove.sh",
+        "formal/tests/jackal_assurance_vectors.adb",
+        "tests/formal_operator_conformance.test.py"
+      ],
+      "residuals": []
+    },
+    {
+      "id": "JOP-STATE-001",
+      "shall": "The SPARK policy kernel shall implement the complete priority-ordered display-state classification specified by Required_State for every State_Input value.",
+      "method": "spark-platinum",
+      "status": "proved",
+      "allocation": [
+        "formal/src/jackal_assurance_policy.ads",
+        "formal/src/jackal_assurance_policy.adb"
+      ],
+      "verification": [
+        "formal/prove.sh",
+        "tests/formal_conformance.test.mjs"
+      ],
+      "residuals": []
+    },
+    {
+      "id": "JOP-STATE-002",
+      "shall": "The SPARK policy kernel shall return Verified if and only if a report is present, error-free, installed, identity-matched, not verification-failed, fresh, probed, fully passing, and functionally reported.",
+      "method": "spark-platinum",
+      "status": "proved",
+      "allocation": [
+        "formal/src/jackal_assurance_policy.ads",
+        "formal/src/jackal_assurance_policy.adb"
+      ],
+      "verification": [
+        "formal/prove.sh",
+        "tests/formal_conformance.test.mjs"
+      ],
+      "residuals": []
+    },
+    {
+      "id": "JOP-ASSURANCE-001",
+      "shall": "The SPARK policy kernel shall return no mathematical ceiling for an empty declaration and otherwise return the canonical strongest member of the declared mathematical-status set.",
+      "method": "spark-platinum",
+      "status": "proved",
+      "allocation": [
+        "formal/src/jackal_assurance_policy.ads",
+        "formal/src/jackal_assurance_policy.adb"
+      ],
+      "verification": [
+        "formal/prove.sh",
+        "tests/formal_conformance.test.mjs"
+      ],
+      "residuals": []
+    },
+    {
+      "id": "JOP-CAP-001",
+      "shall": "The SPARK policy kernel shall report a consequence cap exactly when the family does not carry the axis, both declarations are nonempty, and the strongest declared consequence requires less mathematical strength than the canonical assurance ceiling.",
+      "method": "spark-platinum",
+      "status": "proved",
+      "allocation": [
+        "formal/src/jackal_assurance_policy.ads",
+        "formal/src/jackal_assurance_policy.adb"
+      ],
+      "verification": [
+        "formal/prove.sh",
+        "tests/formal_conformance.test.mjs"
+      ],
+      "residuals": []
+    },
+    {
+      "id": "JOP-BRIDGE-001",
+      "shall": "The shipped Model.js policy shall conform to every finite state, mathematical-set, and consequence-set vector emitted by the proved SPARK policy kernel.",
+      "method": "exhaustive-differential",
+      "status": "tested",
+      "allocation": [
+        "Model.js",
+        "formal/tests/jackal_assurance_vectors.adb"
+      ],
+      "verification": [
+        "tests/formal_conformance.test.mjs"
+      ],
+      "residuals": [
+        "Differential conformance is not a formal source-to-source refinement proof.",
+        "JavaScript number and time handling outside the finite policy abstraction remain tested, not proved."
+      ]
+    },
+    {
+      "id": "JOP-RUNTIME-001",
+      "shall": "The operator surface shall keep installed presence, runtime integrity, and sampled function as separate observations and shall not report FUNCTIONAL unless its canonical probes and identity self-test pass.",
+      "method": "unit-and-live-test",
+      "status": "tested",
+      "allocation": [
+        "bin/omarchy-jackal"
+      ],
+      "verification": [
+        "tests/operator_cli.test.py"
+      ],
+      "residuals": [
+        "Finite probes do not establish universal correctness.",
+        "Runtime identity does not establish operating-system or hardware correctness."
+      ]
+    },
+    {
+      "id": "JOP-UI-001",
+      "shall": "The dropdown shall preserve returned assurance vocabulary, refusal identity, consequence ceilings, and graph non-evidence labels without promoting them through color or wording.",
+      "method": "structural-and-live-test",
+      "status": "tested",
+      "allocation": [
+        "Panel.qml"
+      ],
+      "verification": [
+        "tests/presentation.test.py"
+      ],
+      "residuals": [
+        "QML rendering and compositor behavior are not inside the SPARK proof boundary."
+      ]
+    },
+    {
+      "id": "JOP-REL-001",
+      "shall": "Two independent clean checkouts of the same committed source shall produce byte-identical release archives and matching transport digest files.",
+      "method": "reproducibility-test",
+      "status": "tested",
+      "allocation": [
+        "scripts/package-release.sh"
+      ],
+      "verification": [
+        "scripts/check-release-reproducibility.sh"
+      ],
+      "residuals": [
+        "A checksum and reproducible source archive do not authenticate a publisher."
+      ]
+    },
+    {
+      "id": "JOP-CI-001",
+      "shall": "The public automation shall run the mandatory formal repository gate, shall pin every third-party action to an immutable commit identifier, and shall select explicit GNAT, GPRbuild, and GNATprove versions.",
+      "method": "repository-policy-and-ci",
+      "status": "tested",
+      "allocation": [
+        ".github/workflows/assurance.yml"
+      ],
+      "verification": [
+        "tests/repository.test.py"
+      ],
+      "residuals": [
+        "A passing hosted workflow does not qualify the runner, toolchain, operating system, or hardware.",
+        "Hosted CI availability is outside this repository's control."
+      ]
+    }
+  ]
+}

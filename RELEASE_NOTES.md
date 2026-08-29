@@ -1,8 +1,10 @@
-# JACKAL Omarchy Edition 2.5.0
+# JACKAL Omarchy Edition 2.6.0
 
-This is the first standalone open-source release of the JACKAL Omarchy desktop
-integration. The mathematical JACKAL runtime remains a separate, pinned
-dependency and retains its own release epoch and assurance model.
+This release adds a requirements-complete SPARK assurance-policy component,
+exhaustive conformance to the shipped JavaScript model, deterministic release
+reproduction, and public pinned assurance automation. The mathematical JACKAL
+runtime remains a separate, pinned dependency with its own release epoch and
+assurance model.
 
 ## Highlights
 
@@ -18,8 +20,14 @@ dependency and retains its own release epoch and assurance model.
   from the artifact under review.
 - Assurance-aware graph and linked-workspace previews whose pixels are
   explicitly non-evidentiary.
-- Detailed open-source documentation, threat model, engineering pilot guide,
-  contribution policy, deterministic packaging, and GitHub automation.
+- Component-scoped SPARK Platinum proof for the pure finite assurance-policy
+  kernel, with fail-closed rejection of unproved or justified checks.
+- Exhaustive SPARK-to-JavaScript policy vectors and explicit bridge residuals.
+- Bidirectional machine-readable requirements and traceability enforcement.
+- Byte-identical clean-checkout release reproduction after removing volatile
+  POSIX PAX metadata.
+- Pinned GitHub assurance automation and standards-facing proof documentation.
+- Fail-closed doctor behavior when any canonical function probe is undeclared.
 
 ## Compatibility
 
@@ -31,11 +39,14 @@ dependency and retains its own release epoch and assurance model.
 
 ## Verification boundary
 
-The release tests presentation, parsing, routing, refusal behavior, operator
-diagnostics, ledger transparency, concurrency, outward rendering, repository
-policy, and live Omarchy validation on the development host. These checks do not
-establish universal correctness, security certification, mathematical soundness
-of every JACKAL lane, flight qualification, or organizational endorsement.
+The release proves the requirements allocated to `Jackal_Assurance_Policy` and
+tests presentation, parsing, routing, refusal behavior, operator diagnostics,
+ledger transparency, concurrency, outward rendering, repository policy,
+release reproduction, and live Omarchy validation on the development host. The
+complete mixed-language plugin is not claimed as Platinum. These checks do not
+establish universal correctness, security certification, mathematical
+soundness of every JACKAL lane, flight qualification, or organizational
+endorsement.
 
 ## Install
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit and policy checks for the bundled operator CLI."""
+"""Unit and policy checks for the bundled operator CLI (JOP-RUNTIME-001)."""
 
 from __future__ import annotations
 
@@ -155,12 +155,13 @@ class OperatorTests(unittest.TestCase):
             },
         )
         inventory = {
-            "tool_count": 1,
+            "tool_count": len(operator.CANONICAL_PROBES),
             "tools": [
                 {
-                    "name": "jackal_exact",
-                    "status_classes": ["exact", "refused"],
+                    "name": probe[0],
+                    "status_classes": [probe[2], "refused"],
                 }
+                for probe in operator.CANONICAL_PROBES.values()
             ],
         }
         with mock.patch.object(operator, "load_config", return_value={}), mock.patch.object(
@@ -168,7 +169,13 @@ class OperatorTests(unittest.TestCase):
         ), mock.patch.object(
             operator, "capability_inventory", return_value=inventory
         ), mock.patch.object(
-            operator, "call_tool", return_value={"status": "exact"}
+            operator, "call_tool", side_effect=lambda _context, name, _arguments, **_kwargs: {
+                "status": next(
+                    expected
+                    for tool, _arguments, expected in operator.CANONICAL_PROBES.values()
+                    if tool == name
+                )
+            }
         ), mock.patch.object(
             operator, "_selftest", return_value=(True, "")
         ), mock.patch.object(
@@ -177,6 +184,118 @@ class OperatorTests(unittest.TestCase):
             report = operator._doctor_document()
         self.assertEqual(report["doctor_verdict"], "FUNCTIONAL")
         self.assertTrue(report["function"]["exact"]["functional_pass"])
+
+    def test_doctor_degrades_when_identity_selftest_fails(self) -> None:
+        context = operator.RuntimeContext(
+            root=Path("/tmp/runtime"),
+            launcher=Path("/tmp/runtime/launcher"),
+            locator=None,
+            package={
+                "epoch": "v-test",
+                "package_sha256": "a" * 64,
+                "package_size": 7,
+                "asset": "test",
+            },
+        )
+        inventory = {
+            "tool_count": len(operator.CANONICAL_PROBES),
+            "tools": [
+                {
+                    "name": probe[0],
+                    "status_classes": [probe[2]],
+                }
+                for probe in operator.CANONICAL_PROBES.values()
+            ],
+        }
+        with mock.patch.object(operator, "load_config", return_value={}), mock.patch.object(
+            operator, "runtime_context", return_value=context
+        ), mock.patch.object(
+            operator, "capability_inventory", return_value=inventory
+        ), mock.patch.object(
+            operator, "call_tool", side_effect=lambda _context, name, _arguments, **_kwargs: {
+                "status": next(
+                    expected
+                    for tool, _arguments, expected in operator.CANONICAL_PROBES.values()
+                    if tool == name
+                )
+            }
+        ), mock.patch.object(
+            operator, "_selftest", return_value=(False, "identity mismatch")
+        ), mock.patch.object(
+            operator, "file_sha256", return_value="b" * 64
+        ):
+            report = operator._doctor_document()
+        self.assertEqual(report["doctor_verdict"], "DEGRADED")
+        self.assertFalse(report["identity_match"])
+
+    def test_doctor_degrades_when_probe_status_is_wrong(self) -> None:
+        context = operator.RuntimeContext(
+            root=Path("/tmp/runtime"),
+            launcher=Path("/tmp/runtime/launcher"),
+            locator=None,
+            package={
+                "epoch": "v-test",
+                "package_sha256": "a" * 64,
+                "package_size": 7,
+                "asset": "test",
+            },
+        )
+        inventory = {
+            "tool_count": len(operator.CANONICAL_PROBES),
+            "tools": [
+                {
+                    "name": probe[0],
+                    "status_classes": [probe[2]],
+                }
+                for probe in operator.CANONICAL_PROBES.values()
+            ],
+        }
+        with mock.patch.object(operator, "load_config", return_value={}), mock.patch.object(
+            operator, "runtime_context", return_value=context
+        ), mock.patch.object(
+            operator, "capability_inventory", return_value=inventory
+        ), mock.patch.object(
+            operator, "call_tool", return_value={"status": "refused"}
+        ), mock.patch.object(
+            operator, "_selftest", return_value=(True, "")
+        ), mock.patch.object(
+            operator, "file_sha256", return_value="b" * 64
+        ):
+            report = operator._doctor_document()
+        self.assertEqual(report["doctor_verdict"], "DEGRADED")
+        self.assertTrue(all(
+            not row["functional_pass"] for row in report["function"].values()
+        ))
+
+    def test_doctor_degrades_when_canonical_probe_is_undeclared(self) -> None:
+        context = operator.RuntimeContext(
+            root=Path("/tmp/runtime"),
+            launcher=Path("/tmp/runtime/launcher"),
+            locator=None,
+            package={
+                "epoch": "v-test",
+                "package_sha256": "a" * 64,
+                "package_size": 7,
+                "asset": "test",
+            },
+        )
+        with mock.patch.object(operator, "load_config", return_value={}), mock.patch.object(
+            operator, "runtime_context", return_value=context
+        ), mock.patch.object(
+            operator,
+            "capability_inventory",
+            return_value={"tool_count": 0, "tools": []},
+        ), mock.patch.object(
+            operator, "_selftest", return_value=(True, "")
+        ), mock.patch.object(
+            operator, "file_sha256", return_value="b" * 64
+        ):
+            report = operator._doctor_document()
+        self.assertEqual(report["doctor_verdict"], "DEGRADED")
+        self.assertTrue(all(
+            row["reason"] == "canonical-probe-tool-undeclared"
+            for row in report["function"].values()
+        ))
 
     def test_decision_probe_uses_admissible_identifier_tokens(self) -> None:
         _tool, arguments, expected = operator.CANONICAL_PROBES["decision"]

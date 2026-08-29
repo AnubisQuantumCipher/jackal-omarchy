@@ -15,6 +15,7 @@
 //
 // Kept free of QML types so these rules can be read, tested and argued with in
 // one place.
+// JOP-BRIDGE-001 binds this shipped implementation to the SPARK policy oracle.
 
 // Nerd Font Material Design glyphs, built from codepoints rather than embedded
 // literals so the source survives any re-encoding of this file.

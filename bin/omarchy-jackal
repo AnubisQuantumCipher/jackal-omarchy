@@ -8,6 +8,8 @@ The CLI keeps three claims separate:
 * function: canonical tools executed in this invocation at their declared class.
 
 It never treats installation as function, and it never promotes a JACKAL status.
+
+JOP-RUNTIME-001 allocates the presence/integrity/function separation here.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+PLUGIN_VERSION = (PLUGIN_ROOT / "VERSION").read_text(encoding="utf-8").strip()
 USER_HOME = Path.home()
 DATA_HOME = Path(os.environ.get("XDG_DATA_HOME", USER_HOME / ".local/share"))
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", USER_HOME / ".config"))
@@ -391,6 +394,29 @@ def command_inventory(_: argparse.Namespace) -> int:
     return 0
 
 
+def doctor_verdict(
+    discovery: str,
+    *,
+    has_probe_rows: bool,
+    all_canonical_declared: bool,
+    all_probes_pass: bool,
+    identity_match: bool,
+) -> str:
+    """JOP-DOCTOR-001 shipped refinement of the finite SPARK policy."""
+    if discovery == "not-installed":
+        return "NOT_INSTALLED"
+    if discovery != "ready":
+        return "REFUSED"
+    if (
+        has_probe_rows
+        and all_canonical_declared
+        and all_probes_pass
+        and identity_match
+    ):
+        return "FUNCTIONAL"
+    return "DEGRADED"
+
+
 def _doctor_document() -> dict[str, Any]:
     document: dict[str, Any] = {
         "schema": "jackal-omarchy-doctor-v1",
@@ -413,8 +439,12 @@ def _doctor_document() -> dict[str, Any]:
         inventory = capability_inventory(context)
     except OperatorRefusal as refusal:
         document["error"] = str(refusal)
-        document["doctor_verdict"] = (
-            "NOT_INSTALLED" if str(refusal) == "runtime-not-installed" else "REFUSED"
+        document["doctor_verdict"] = doctor_verdict(
+            "not-installed" if str(refusal) == "runtime-not-installed" else "refused",
+            has_probe_rows=False,
+            all_canonical_declared=False,
+            all_probes_pass=False,
+            identity_match=False,
         )
         return document
 
@@ -433,6 +463,14 @@ def _doctor_document() -> dict[str, Any]:
     for family, (tool, arguments, expected) in CANONICAL_PROBES.items():
         declaration = index.get(tool)
         if declaration is None:
+            rows[family] = {
+                "tool": tool,
+                "executed_status": "not-executed",
+                "expected": expected,
+                "declared_statuses": [],
+                "functional_pass": False,
+                "reason": "canonical-probe-tool-undeclared",
+            }
             continue
         try:
             actual_arguments = (
@@ -466,9 +504,17 @@ def _doctor_document() -> dict[str, Any]:
     document["identity_match"] = identity_match
     if selftest_detail:
         document["identity_detail"] = selftest_detail
+    all_declared = all(
+        row.get("reason") != "canonical-probe-tool-undeclared"
+        for row in rows.values()
+    )
     passed = bool(rows) and all(row["functional_pass"] for row in rows.values())
-    document["doctor_verdict"] = (
-        "FUNCTIONAL" if passed and identity_match else "DEGRADED"
+    document["doctor_verdict"] = doctor_verdict(
+        "ready",
+        has_probe_rows=bool(rows),
+        all_canonical_declared=all_declared,
+        all_probes_pass=passed,
+        identity_match=identity_match,
     )
     return document
 
@@ -684,7 +730,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="JACKAL Omarchy Edition 2.5.0",
+        version=f"JACKAL Omarchy Edition {PLUGIN_VERSION}",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("identity", help="observe installed runtime identities")

@@ -6,15 +6,20 @@ cd "$ROOT"
 
 export PYTHONDONTWRITEBYTECODE=1
 
+python3 -B scripts/check-traceability.py
 python3 -B tests/repository.test.py
 python3 -B tests/operator_cli.test.py
 python3 -B tests/presentation.test.py
 python3 -B tests/ledger.test.py --fast
 node tests/model.test.mjs
+./scripts/check-formal.sh
 python3 -B tests/router.test.py
 
 bash -n scripts/check.sh
+bash -n scripts/check-formal.sh
 bash -n scripts/package-release.sh
+bash -n scripts/check-release-reproducibility.sh
+bash -n scripts/release-gate.sh
 
 if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate "$ROOT"

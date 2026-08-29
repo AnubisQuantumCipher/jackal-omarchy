@@ -3,6 +3,30 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 2.6.0 — 2026-08-28
+
+### Added
+
+- Requirements-complete SPARK policy kernel with component-scoped Platinum
+  contracts for display-state classification, assurance ceilings, and
+  consequence caps.
+- Exhaustive differential conformance vectors between the proved SPARK policy
+  and the shipped JavaScript model.
+- Machine-readable bidirectional requirements, implementation, verification,
+  residual-risk, and product-boundary baseline.
+- Fail-closed formal, traceability, reproducibility, and release gates.
+- Pinned GitHub assurance automation and a standards-facing Platinum boundary
+  document.
+
+### Corrected
+
+- Release archives no longer carry nondeterministic POSIX PAX access/change
+  timestamps; independent clean checkouts now produce byte-identical archives.
+- The operator doctor no longer reports `FUNCTIONAL` when a canonical probe is
+  absent from the runtime inventory.
+- Documentation no longer implies that a component proof establishes
+  whole-plugin, platform, hardware, certification, or flight-readiness claims.
+
 ## 2.5.0 — 2026-08-28
 
 ### Added
@@ -16,7 +40,7 @@ for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 - Marketplace preview captured from the running dropdown.
 - Complete architecture, assurance, installation, operations, dependency,
   threat-model, engineering-pilot, development, and release documentation.
-- GitHub CI, release packaging, contribution templates, and security policy.
+- Release packaging, contribution templates, and security policy.
 
 ### Changed
 

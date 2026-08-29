@@ -21,14 +21,14 @@ Semantic versioning applies to the plugin:
 - Root `preview.png` was captured from the actual plugin and inspected.
 - No secrets, operator authorization, receipts, ledgers, or local runtime paths
   are tracked.
-- Full local gate passes.
+- Mandatory formal local gate passes with no skipped proof.
 - Live Omarchy validation and panel lifecycle pass on the supported host.
 - Marketplace-required validation items are understood before submission.
 
 ## Local gate
 
 ```sh
-./scripts/check.sh
+JACKAL_REQUIRE_FORMAL=1 ./scripts/check.sh
 ```
 
 Record commands and observed outputs in the release notes. Do not convert a test
@@ -47,8 +47,16 @@ as the source of release bytes, adds a sorted `MANIFEST.sha256`, and creates a
 reproducible tar archive using the commit timestamp. It emits a separate SHA-256
 file for transport integrity.
 
-Re-run the command in a clean checkout and compare the artifact digest before
-publishing.
+Before publishing, run the complete release gate:
+
+```sh
+./scripts/release-gate.sh
+```
+
+It adds the full ledger suite and checks `JOP-REL-001` by cloning the committed
+tree twice, building independently, comparing archive bytes and digest files,
+and checking each digest. GNU tar POSIX PAX access/change-time records are
+deleted so host filesystem metadata cannot perturb the archive.
 
 ## Tag and GitHub release
 
@@ -90,7 +98,7 @@ listing approval, not security certification or engineering endorsement.
 - Re-run validation, open/close, doctor, verify, stale state, and removal.
 - Confirm the release archive digest and attached source commit.
 - Confirm documentation links resolve on GitHub.
-- Watch release and marketplace validation results.
+- Watch the pinned GitHub assurance workflow and marketplace validation results.
 - Record any residual issue without rewriting the evidence from the release.
 
 ## Rollback

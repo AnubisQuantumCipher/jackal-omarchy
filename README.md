@@ -38,6 +38,8 @@ This repository is the Omarchy integration, not a copy of the JACKAL runtime.
 | `verify_artifact.py` | Receipt/bundle front-door router | Copies operator authorization into a JACKAL verification request |
 | `bin/jackal-mcp-ledger` | Optional transparent MCP recorder | Local recall only; retained artifacts require re-verification |
 | `assets/` | Graph and workspace previews | Pixels are not proof |
+| `formal/` | SPARK assurance-policy kernel and proof gate | Component-scoped Platinum claim only |
+| `assurance/` | Bidirectional requirements and residuals | Machine-readable claim boundary |
 
 The mathematical runtime, formal checkers, domain packs, and MCP tool schemas
 remain in the public [JACKAL repository](https://github.com/AnubisQuantumCipher/jackal).
@@ -221,10 +223,12 @@ Run the repository gate:
 ./scripts/check.sh
 ```
 
-The gate performs manifest validation, JavaScript model tests, Python router and
-ledger tests, presentation invariants, operator CLI tests, repository policy
-checks, shell syntax checks, and QML linting when the local Omarchy imports make
-it available.
+The gate performs bidirectional requirement traceability, manifest validation,
+JavaScript model tests, Python router and ledger tests, presentation invariants,
+operator CLI tests, repository policy checks, the SPARK proof and exhaustive
+SPARK-to-JavaScript differential conformance when GNATprove is available, shell
+syntax checks, and QML linting when the local Omarchy imports make it available.
+Release and CI runs set `JACKAL_REQUIRE_FORMAL=1`, which refuses to skip proof.
 
 Individual checks:
 
@@ -235,9 +239,14 @@ python3 -B tests/ledger.test.py --fast
 python3 -B tests/presentation.test.py
 python3 -B tests/operator_cli.test.py
 python3 -B tests/repository.test.py
+./formal/prove.sh
+node tests/formal_conformance.test.mjs
 ```
 
-See [Development](docs/DEVELOPMENT.md), [Architecture](docs/ARCHITECTURE.md), and
+The pure `Jackal_Assurance_Policy` component has a requirements-complete SPARK
+Platinum claim. The complete mixed-language plugin does not. See
+[SPARK Platinum Assurance Boundary](docs/PLATINUM_ASSURANCE.md),
+[Development](docs/DEVELOPMENT.md), [Architecture](docs/ARCHITECTURE.md), and
 [Release Process](docs/RELEASE_PROCESS.md).
 
 ## Security
@@ -272,6 +281,7 @@ The concrete pilot path is documented in
 - [Dependencies](docs/DEPENDENCIES.md)
 - [Threat Model](docs/THREAT_MODEL.md)
 - [Engineering Pilot Guide](docs/ENGINEERING_PILOT.md)
+- [SPARK Platinum Assurance Boundary](docs/PLATINUM_ASSURANCE.md)
 - [Development](docs/DEVELOPMENT.md)
 - [Release Process](docs/RELEASE_PROCESS.md)
 - [Contributing](CONTRIBUTING.md)
