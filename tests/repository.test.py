@@ -134,14 +134,17 @@ for use in re.findall(r"uses:\s*([^\s#]+)", workflow):
         re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", use) is not None,
         f"workflow action is not pinned to an immutable commit: {use}",
     )
-alire_action = (
-    "alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a"
-)
-temporary_prefix = "prefix: ${{ runner.temp }}/jackal-alire"
-require(alire_action in workflow, "workflow lacks the pinned Alire installer")
+for token in (
+    "alr-2.1.1-bin-x86_64-linux.zip",
+    "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7",
+    'ALR_SIZE: "12800698"',
+    'proof_prefix="$RUNNER_TEMP/jackal-proof-toolchain"',
+    "sha256sum --check --strict",
+):
+    require(token in workflow, f"workflow lacks pinned proof bootstrap: {token}")
 require(
-    workflow.count(alire_action) == workflow.count(temporary_prefix),
-    "every Alire install must stay outside the repository checkout",
+    "alire-project/alr-install@" not in workflow,
+    "workflow must not inherit mutable transitive actions from alr-install",
 )
 
 for executable in (

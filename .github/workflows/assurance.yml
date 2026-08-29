@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+env:
+  ALR_URL: https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+  ALR_SHA256: 09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7
+  ALR_SIZE: "12800698"
+
 concurrency:
   group: assurance-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,11 +27,24 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install GNAT, GPRbuild, and GNATprove
-        uses: alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a # v2.0.1
-        with:
-          crates: gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0
-          prefix: ${{ runner.temp }}/jackal-alire
+      - name: Install digest-pinned Alire and exact proof toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          alr_archive="$RUNNER_TEMP/alr-2.1.1.zip"
+          alr_root="$RUNNER_TEMP/alr-2.1.1"
+          proof_prefix="$RUNNER_TEMP/jackal-proof-toolchain"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --location --max-filesize "$ALR_SIZE" "$ALR_URL" --output "$alr_archive"
+          test "$(stat -c %s "$alr_archive")" = "$ALR_SIZE"
+          printf '%s  %s\n' "$ALR_SHA256" "$alr_archive" | sha256sum --check --strict
+          mkdir -p "$alr_root"
+          unzip -q "$alr_archive" -d "$alr_root"
+          test -x "$alr_root/bin/alr"
+          "$alr_root/bin/alr" -n install \
+            gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0 \
+            --prefix "$proof_prefix"
+          realpath "$proof_prefix/bin" >> "$GITHUB_PATH"
 
       - name: Run mandatory assurance gate
         env:
@@ -43,11 +61,24 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install GNAT, GPRbuild, and GNATprove
-        uses: alire-project/alr-install@b99b8c21417c79c307905439def2718bc393b94a # v2.0.1
-        with:
-          crates: gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0
-          prefix: ${{ runner.temp }}/jackal-alire
+      - name: Install digest-pinned Alire and exact proof toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          alr_archive="$RUNNER_TEMP/alr-2.1.1.zip"
+          alr_root="$RUNNER_TEMP/alr-2.1.1"
+          proof_prefix="$RUNNER_TEMP/jackal-proof-toolchain"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --location --max-filesize "$ALR_SIZE" "$ALR_URL" --output "$alr_archive"
+          test "$(stat -c %s "$alr_archive")" = "$ALR_SIZE"
+          printf '%s  %s\n' "$ALR_SHA256" "$alr_archive" | sha256sum --check --strict
+          mkdir -p "$alr_root"
+          unzip -q "$alr_archive" -d "$alr_root"
+          test -x "$alr_root/bin/alr"
+          "$alr_root/bin/alr" -n install \
+            gnat_native=16.1.0 gprbuild=26.0.1 gnatprove=16.1.0 \
+            --prefix "$proof_prefix"
+          realpath "$proof_prefix/bin" >> "$GITHUB_PATH"
 
       - name: Reproduce release bytes from clean checkouts
         env:
