@@ -109,6 +109,24 @@ Item {
     var configured = String(setting("expectationsPath", "")).trim()
     return configured === "" ? defaultExpectationsPath : configured
   }
+
+  // ---- Live graph deck ----------------------------------------------------
+  //
+  // The widget never computes a sample. Sweeps are handed to the installed
+  // runtime's own evaluator binary in bounded worksheet batches; a statement
+  // it refuses becomes a break in the curve, never an invented value. The
+  // result is estimated visualization — pixels are not proof.
+
+  property var graphPoints: []
+  property string graphExpression: "x^6-5*x^4+4*x^2"
+  property string graphXMin: "-2.6"
+  property string graphXMax: "2.6"
+  property bool graphBusy: false
+  property string graphError: ""
+  property string graphMeta: ""
+  property var graphJobs: []
+  property var graphYValues: []
+  property var graphXNumbers: []
   // This file's own directory, so the router is found wherever the plugin sits.
   readonly property string pluginDir:
     String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "").replace(/\/$/, "")
@@ -193,6 +211,91 @@ Item {
     maturityProcess.reset()
     maturityProcess.command = [runtimeDir + "/jackal-native", "maturity"]
     maturityProcess.running = true
+  }
+
+  // Plot a sweep through the sealed evaluator. Refusals are stated, never
+  // silently repaired; a busy deck ignores re-entry instead of queueing.
+  function plotGraph(expression, xMinText, xMaxText) {
+    if (graphBusy || graphProcess.running) return
+    var expr = String(expression || "").trim()
+    graphError = ""
+    if (runtimeDir === "") {
+      graphError = "No runtime epoch established; there is no evaluator to name."
+      return
+    }
+    if (!Model.graphExpressionValid(expr)) {
+      graphError = "Expression refused before any subprocess: only the engine's eval fragment (x, digits, + - * / ^, functions, parentheses) is accepted."
+      return
+    }
+    if (!Model.graphRangeValid(xMinText, xMaxText)) {
+      graphError = "Range refused: finite bounds with xMax − xMin ≥ 1e−6 and |x| ≤ 1e6."
+      return
+    }
+    graphExpression = expr
+    graphXMin = String(xMinText).trim()
+    graphXMax = String(xMaxText).trim()
+    graphXNumbers = Model.graphXValues(Number(graphXMin), Number(graphXMax), Model.GRAPH_SAMPLE_COUNT)
+    var pending = []
+    for (var i = 0; i < graphXNumbers.length; i += Model.GRAPH_CHUNK_SIZE) {
+      pending.push({
+        start: i,
+        count: Math.min(Model.GRAPH_CHUNK_SIZE, graphXNumbers.length - i)
+      })
+    }
+    graphJobs = pending
+    graphYValues = new Array(graphXNumbers.length)
+    graphMeta = ""
+    graphBusy = true
+    runNextGraphJob()
+  }
+
+  function runNextGraphJob() {
+    if (graphJobs.length === 0) {
+      finishGraph()
+      return
+    }
+    var job = graphJobs.shift()
+    graphProcess.job = job
+    graphProcess.reset()
+    var xs = graphXNumbers.slice(job.start, job.start + job.count)
+    graphProcess.command = [
+      runtimeDir + "/jackal-native", "worksheet",
+      Model.graphWorksheet(graphExpression, xs)
+    ]
+    graphProcess.running = true
+  }
+
+  function applyGraphJob(job, ok, stdoutText) {
+    if (ok) {
+      var values = Model.parseWorksheetValues(stdoutText, job.count)
+      for (var i = 0; i < job.count; i++) graphYValues[job.start + i] = values[i]
+    } else if (job.count > 1) {
+      // A refused statement aborts the rest of its worksheet, so a failed
+      // batch is retried one sample at a time; only the refused samples
+      // become breaks.
+      var singles = []
+      for (var s = job.count - 1; s >= 0; s--) {
+        singles.push({ start: job.start + s, count: 1 })
+      }
+      for (var q = 0; q < singles.length; q++) graphJobs.unshift(singles[q])
+    } else {
+      graphYValues[job.start] = null
+    }
+    runNextGraphJob()
+  }
+
+  function finishGraph() {
+    var points = []
+    for (var i = 0; i < graphXNumbers.length; i++) {
+      var y = graphYValues[i]
+      points.push({
+        x: graphXNumbers[i],
+        y: (y === undefined || y === null || !isFinite(y)) ? null : y
+      })
+    }
+    graphPoints = points
+    graphMeta = Model.graphMetaText(points)
+    graphBusy = false
   }
 
   // Verify whatever the clipboard holds against the operator's standing
@@ -481,6 +584,43 @@ Item {
       maturityProcess.exitCode = code
       maturityProcess.exited = true
       maturityProcess.settle()
+    }
+  }
+
+  // One worksheet batch of graph samples through the runtime's evaluator.
+  // Exit and stream-finished arrive in no guaranteed order, so both report
+  // in and the last to arrive settles the job.
+  Process {
+    id: graphProcess
+    command: ["true"]
+
+    property var job: null
+    property string outText: ""
+    property bool exited: false
+    property bool outDone: false
+    property int exitCode: 0
+
+    function reset() { outText = ""; exited = false; outDone = false; exitCode = 0 }
+
+    function settle() {
+      if (!exited || !outDone || job === null) return
+      var settled = job
+      job = null
+      root.applyGraphJob(settled, exitCode === 0, outText)
+    }
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        graphProcess.outText = String(text || "")
+        graphProcess.outDone = true
+        graphProcess.settle()
+      }
+    }
+    onExited: function(code) {
+      graphProcess.exitCode = code
+      graphProcess.exited = true
+      graphProcess.settle()
     }
   }
 

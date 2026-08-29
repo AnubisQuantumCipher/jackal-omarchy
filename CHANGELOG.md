@@ -3,6 +3,27 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 2.7.0 — 2026-08-29
+
+### Added
+
+- Mission-control dropdown: the panel now claims the entire available screen
+  plane below the bar and lays its accounts out as a three-column cockpit —
+  SYSTEMS (doctor, identity, surface totals, agent surface, digests),
+  OPERATIONS (live graph deck, clipboard verification, evidence register),
+  and TELEMETRY (latest ledger answers, session function probes) — under a
+  pinned command strip and the never-scrolling laws/non-claim footer.
+- Live graph deck: expression, range, and preset sweeps are evaluated by the
+  installed runtime's own `jackal-native worksheet` lane in bounded batches
+  and rendered on an instrument canvas. A statement the evaluator refuses
+  becomes a break in the curve, never an invented value; the render remains
+  `status=estimated` visualization and pixels remain not proof. The approved
+  HELLGATE reference render stays as the deck's empty-state placeholder.
+- Surface totals now state the unified 74-tool Codex surface: sealed 41,
+  THOTH 7, advanced 3, STEM 7, certified number theory 10, engineering 6.
+- `g` focuses the graph expression field; the telemetry feed shows up to ten
+  ledger answers.
+
 ## 2.6.3 — 2026-08-29
 
 ### Corrected

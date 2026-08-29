@@ -42,8 +42,32 @@ require(
     "panel no longer states the unified architecture",
 )
 require(
-    'value: "58 tools"' in panel and 'label: "STEM WORKFLOWS"' in panel,
+    'value: "74 tools"' in panel and 'label: "STEM WORKFLOWS"' in panel
+    and 'label: "NUMBER THEORY"' in panel and 'label: "ENGINEERING"' in panel,
     "panel surface totals are stale or incomplete",
+)
+require(
+    "panel.fittedContentWidth(panel.availableCardWidth" in panel
+    and "panel.cappedContentHeight(panel.availableCardHeight" in panel,
+    "mission-control dropdown no longer claims the full screen plane",
+)
+require(
+    "id: systemsFlick" in panel and "id: panelFlick" in panel
+    and "id: telemetryFlick" in panel and "id: footer" in panel,
+    "three-column cockpit deck with a pinned footer is missing",
+)
+require(
+    "GRAPH DECK — LIVE SWEEP" in panel
+    and "id: graphCanvas" in panel
+    and "jackal.plotGraph(" in panel
+    and "A refused sample lifts the pen" in panel,
+    "live graph deck lost its sweep machinery or its refusal-break rule",
+)
+require(
+    '"/jackal-native", "worksheet"' in service
+    and "function plotGraph" in service
+    and "function applyGraphJob" in service,
+    "graph sweeps no longer run through the runtime's own evaluator",
 )
 require(
     all(token in panel for token in ("#050506", "#111214", "#c8cdd3", "#f1f3f5", "#d51f2d", "#e8eaed")),
