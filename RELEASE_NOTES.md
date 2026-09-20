@@ -1,43 +1,46 @@
-# JACKAL Omarchy Edition 2.6.3
+# JACKAL Omarchy Edition 2.7.1
 
-This release keeps the requirements-complete SPARK assurance-policy component,
-exhaustive JavaScript conformance, deterministic release reproduction, and
-public pinned assurance automation from 2.6.2, while correcting the manual-copy
-migration procedure discovered during live deployment. Operator backups now
-live outside Omarchy's plugin catalog, preventing an old manifest with the same
-permanent plugin ID from blocking the replacement Git clone. The mathematical
-JACKAL runtime remains a separate, pinned dependency with its own release epoch
-and assurance model.
+This release turns the bar dropdown into a full-screen mission-control cockpit
+and makes its graph deck an instrument. The deck evaluates expression, range,
+and preset sweeps through the installed runtime's own `jackal-native worksheet`
+lane in bounded batches and renders them on an instrument canvas; a statement
+the evaluator refuses becomes a break in the curve, never an invented value,
+and the render remains `status=estimated` visualization. Everything 2.6.3
+proved and reproduced is retained unchanged: the component-scoped SPARK
+Platinum assurance-policy kernel, exhaustive JavaScript conformance,
+deterministic clean-checkout release reproduction, and the pinned public
+assurance automation. The mathematical JACKAL runtime remains a separate,
+pinned dependency with its own release epoch and assurance model.
 
 ## Highlights
 
-- Professional graphite, steel, white, and crimson evidence surface.
-- Stable, pixel-aligned scrolling plane without green status semantics or
-  animated interference behind text.
-- Fresh function probes separated from installed capability and runtime
-  integrity.
-- Bundled portable operator CLI; no fixed username, checkout, or runtime epoch.
-- Optional transparent MCP ledger with concurrent-write protection, bounded
-  retention, outward decimal rendering, and retained formal receipts.
-- Verification router that keeps operator expectations structurally separate
-  from the artifact under review.
-- Assurance-aware graph and linked-workspace previews whose pixels are
-  explicitly non-evidentiary.
-- Component-scoped SPARK Platinum proof for the pure finite assurance-policy
-  kernel, with fail-closed rejection of unproved or justified checks.
-- Exhaustive SPARK-to-JavaScript policy vectors and explicit bridge residuals.
-- Bidirectional machine-readable requirements and traceability enforcement.
-- Byte-identical clean-checkout release reproduction after removing volatile
-  POSIX PAX metadata.
-- Exact local commit archive, deterministic independent repository creation,
-  and pre-execution Git tree-identity equality in both reproduction trees.
-- No remote, fetched, or shared-worktree source executes in release
-  reproduction.
-- Pinned GitHub assurance automation and standards-facing proof documentation.
-- Proof-tool installations isolated from the repository checkout in hosted CI.
-- Fail-closed doctor behavior when any canonical function probe is undeclared.
-- Catalog-safe migration from a manually copied plugin, with a regression test
-  that rejects duplicate-ID backup guidance.
+- Mission-control dropdown: the panel claims the entire available screen
+  plane below the bar and lays its accounts out as a three-column cockpit —
+  SYSTEMS (doctor, identity, surface totals, agent surface, digests),
+  OPERATIONS (live graph deck, clipboard verification, evidence register),
+  and TELEMETRY (latest ledger answers, session function probes) — under a
+  pinned command strip and the never-scrolling laws/non-claim footer.
+- Live graph deck evaluated by the installed runtime's `jackal-native
+  worksheet` lane in bounded batches; refused statements break the curve
+  rather than being interpolated, and pixels remain not proof. The approved
+  HELLGATE reference render stays as the deck's empty-state placeholder.
+- Instrument-grade plot: a left gutter sized to its own labels, 1/2/5-decade
+  tick gridlines with step-scaled precision, refused runs shaded as bands
+  that own exactly the refused samples, dots where the pen lifted, observed
+  max and min marked where they sit (evaluator samples, never window
+  padding), and a hover crosshair that reads out the nearest evaluator
+  sample by number — it never interpolates, because between samples there is
+  no claim.
+- The pure tick, band, extreme, and hover logic lives in Model.js under 60+
+  new checks, which immediately caught and removed a "-0.0" tick label.
+- Surface totals state the unified 74-tool Codex surface: sealed 41, THOTH 7,
+  advanced 3, STEM 7, certified number theory 10, engineering 6.
+- `g` focuses the graph expression field; the telemetry feed shows up to ten
+  ledger answers.
+- Retained from 2.6.3: catalog-safe migration from a manually copied plugin,
+  fail-closed doctor behavior, the transparent MCP ledger with retained formal
+  receipts, and the verification router that keeps operator expectations
+  structurally separate from the artifact under review.
 
 ## Compatibility
 
