@@ -1,11 +1,20 @@
 # JACKAL Omarchy Edition
 
-A full-screen mission-control instrument for the JACKAL mathematical evidence
-kernel on the Omarchy bar. It exposes live function probes, assurance-aware
-result recall, runtime integrity routing, retained-receipt verification, and a
-live — and explicitly non-evidentiary — graph deck that sweeps expressions
-through the runtime's own evaluator, in a graphite, steel, and crimson
-three-column cockpit.
+An evidence surface for the JACKAL mathematical evidence kernel, built the way
+Omarchy builds its own panels. Three surfaces share one service:
+
+- **the bar pill** — session function as a single glyph, with the number of
+  kernel calls in the last hour beside it (a count of ledger rows, which says
+  the kernel was used and states no answer);
+- **the dropdown** — an ordinary Omarchy keyboard panel: hero, a live activity
+  instrument over the operator's window, the latest answer, the recent feed and
+  one-key actions;
+- **the cockpit** — full-screen mission control with seven decks: overview,
+  ledger, graph, probes, verify, register and THOTH.
+
+Every colour, size and spacing comes from the active Omarchy theme through the
+shell's `Color` and `Style` singletons; the plugin carries no palette of its
+own, so it looks native under Tokyo Night, Ashfall or anything else you apply.
 
 ![JACKAL Omarchy Edition dropdown](preview.png)
 
@@ -18,15 +27,12 @@ THOTH is the name of JACKAL's integrated measurement and provenance subsystem.
 It is not a separate service, personality, arithmetic engine, or source of
 assurance.
 
-The current identity-pinned Codex package exposes one 74-name surface: 41
-sealed-runtime tools, seven THOTH measurement/provenance tools, three advanced
-CAS/graph/nonlinear-certificate tools, seven linked STEM workflow tools, ten
-certified number-theory workflows, and six certified engineering workflows.
-Those are release declarations, not 74 independent engines and not evidence
-that every function ran in this session. Additive workflows delegate numeric
-fields to admitted sealed-runtime lanes and retain their own orchestration and
-model non-claims. The dropdown therefore keeps **SEALED RUNTIME**, **INTEGRATED
-THOTH**, and the expanded Codex surface visibly separate.
+The cockpit prints only numbers it read: the declared tool count and the
+evidence register come from the installed runtime's own
+`capability_inventory_v1.json`, the session function from tools executed in
+this shell session, and every activity figure from the local ledger. Nothing on
+any deck is typed in, and the surfaces keep **SEALED RUNTIME**, **INTEGRATED
+THOTH** and **LOCAL RECALL** visibly separate.
 
 The graph deck's rule is the panel's rule: sweeps are computed by the
 installed runtime's own `jackal-native worksheet` lane in bounded batches, a
@@ -107,20 +113,32 @@ Full installation and migration guidance is in
 
 ## Use
 
-| Input | Action |
-|---|---|
-| left click | Toggle the dropdown |
-| right click or `r` | Execute fresh function probes |
-| middle click or `v` | Run the pinned runtime integrity check |
-| `p` | Verify a clipboard artifact against operator-owned expectations |
-| `c` | Copy the observed package digest |
-| `n` | Copy the runtime's governing non-claim |
-| `↑` / `↓` | Navigate the evidence register |
-| `Enter` | Copy the selected family's tool list |
+Open the cockpit with `SUPER + SHIFT + J`, from the JACKAL entry in the app
+launcher, or with `omarchy-shell shell summon khephri.jackal '{}'`.
 
-The newest result remains above the fold. It is labeled `LOCAL RECALL` because a
-ledger row is not evidence. A retained formal receipt can be sent through the
-real verification front door; only the returned verification verdict applies.
+| Where | Input | Action |
+|---|---|---|
+| bar | left click | Toggle the dropdown |
+| bar | middle click | Open the cockpit |
+| bar | right click | Execute fresh function probes |
+| dropdown | `j` / `k` · `Enter` | Walk the latest and recent rows · open the cockpit on the ledger |
+| dropdown | `h` / `l` · `Enter` | Walk the action row · run it |
+| dropdown | `r` · `v` · `c` · `g` | Probe · verify the clipboard artifact · cockpit · graph deck |
+| dropdown | `Tab` | Switch to the neighbouring bar panel |
+| cockpit | `1` – `7` · `Tab` | Choose a deck · cycle decks |
+| cockpit | `j` / `k` · `Enter` | Walk the ledger · expand a row (fields, arguments, non-claims) |
+| cockpit | `Shift+R` · `Shift+V` | Probe now · verify the clipboard artifact |
+| cockpit | `Shift+C` · `Shift+N` | Copy the package digest · copy the governing non-claim |
+| cockpit | `Esc` | Close |
+
+`omarchy-shell khephri.jackal deck <overview|ledger|graph|probes|verify|register|thoth>`
+lands the cockpit on a deck; `probe`, `verify` and `state` are also routed.
+
+The newest result is labelled recall wherever it appears, because a ledger row
+is not evidence. A retained formal receipt — listed on the verify deck — can be
+sent back through the real verification front door; only the returned verdict
+applies, and a refusal there is the correct answer when the operator's
+expectations do not authorize that request.
 
 ## Configure
 
@@ -132,6 +150,9 @@ The panel settings are managed through Omarchy:
 | `staleAfterSec` | 2400 | Age after which a probe establishes nothing current |
 | `probeOnOpen` | `true` | Re-probe when an opened panel is stale |
 | `expectationsPath` | blank | Blank resolves to `~/.config/omarchy/jackal-expectations.json` |
+| `activityWindowHours` | 24 | Window for the activity instrument, status spectrum and call counts |
+| `feedLimit` | 8 | Recent rows shown in the dropdown and the overview feed |
+| `barShowActivity` | `true` | Show the last-hour call count beside the bar glyph |
 
 Optional operator paths live in `~/.config/jackal-omarchy/config.json`. Start
 from [config/config.example.json](config/config.example.json); do not place

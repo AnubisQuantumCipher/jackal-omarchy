@@ -1,6 +1,8 @@
 // JACKAL COCKPIT — full-screen mission control for the evidence kernel.
 //
-// Overlay kind: summoned from the bar widget, dismissed with Esc / ✕.
+// Overlay kind: summoned from the bar widget, SUPER+SHIFT+J, or
+// `omarchy-shell shell summon khephri.jackal '{}'`; dismissed with Esc / ✕.
+//
 // JOP-UI-001: returned assurance vocabulary is rendered without promotion.
 //
 // JACKAL is a mathematical evidence kernel: every answer declares what kind of
@@ -9,29 +11,27 @@
 // decided on it (CONSEQUENCE). A ceiling is an upper bound, never a grant.
 //
 // THOTH is JACKAL's integrated measurement/provenance subsystem, not a second
-// engine. This cockpit is built to preserve that architecture and JACKAL's
-// assurance boundaries rather than summarise them away, so it keeps these
-// accounts strictly apart and never merges them into a score:
+// engine. THOTH lives inside JACKAL — one engine, one identity.
 //
-//   GRAPH              an explicitly NON-EVIDENTIARY sweep of the sealed
-//                      evaluator. Graph pixels are visualization, never
-//                      evidence, and the canvas says so on its face.
-//   PROBES             function — established only by tools executed in this
-//                      shell session. Nothing else may colour the indicator.
-//   LEDGER             local recall of returned answers. Recall is not
-//                      evidence; the ledger is a file this tooling wrote.
-//   VERIFY             the one section that ACTS. Routes a clipboard receipt or
-//                      bundle to a real front door and prints its verdict
-//                      verbatim, against an authorization the operator owns —
-//                      never one taken from the artifact under review.
-//   THOTH              integrated measurement/provenance and the sealed runtime
-//                      identity. Exact-given remains conditional on its datum.
-//   REGISTER           capability — what actually stands behind an answer from
-//                      each family, with both axes, from the release's own
-//                      generated `capability_inventory_v1.json`.
+// The cockpit keeps these accounts strictly apart and never merges them into a
+// score:
 //
-// The two laws and the engine's governing non-claim are pinned outside every
-// scroll area, because they are the lines that must never be scrolled away.
+//   OVERVIEW   every account at once, none of them summarised into another
+//   LEDGER     local recall of returned answers — a file this tooling wrote
+//   GRAPH      an explicitly NON-EVIDENTIARY sweep of the sealed evaluator;
+//              graph pixels are visualization, never evidence
+//   PROBES     function — established only by tools executed in this session
+//   VERIFY     the one section that ACTS: a clipboard receipt or bundle goes
+//              to a real front door, against an authorization the operator
+//              owns — never from the artifact under review
+//   REGISTER   capability — what stands behind each family, both axes
+//   THOTH      the sealed runtime identity and measurement provenance
+//
+// Every colour, size and spacing comes from the operator's theme through the
+// shell's Color and Style singletons, the way Omarchy's own overlays draw.
+// State colours have no middle: established → text colour, refusal or
+// downgrade → urgent, not established → dimmed. Accent is chrome and the
+// activity instrument only; it is never a state.
 
 import QtQuick
 import QtQuick.Controls
@@ -50,53 +50,110 @@ Item {
   property var manifest: ({})
   property bool opened: false
 
-  property string section: "overview"
-  property int registerIndex: 0
-  property string hoverNav: ""
-
-  readonly property var sections: [
-    { key: "overview", label: "OVERVIEW", hint: "everything at once" },
-    { key: "graph",    label: "GRAPH",    hint: "non-evidentiary sweep" },
-    { key: "probes",   label: "PROBES",   hint: "session function" },
-    { key: "ledger",   label: "LEDGER",   hint: "local recall" },
-    { key: "verify",   label: "VERIFY",   hint: "front door" },
-    { key: "thoth",    label: "THOTH",    hint: "measurement" },
-    { key: "register", label: "REGISTER", hint: "capability" }
-  ]
-
   readonly property string pluginId:
     root.manifest && typeof root.manifest.id === "string"
       && root.manifest.id !== "" ? root.manifest.id : "khephri.jackal"
 
-  // Machine-HUD palette shared with the bar dropdown: matte graphite, cold
-  // instrument white, one disciplined crimson channel. No green, and no
-  // decorative colour that can be mistaken for evidence state.
-  readonly property color panelVoid: "#050506"
-  readonly property color panelSurface: "#111214"
-  readonly property color panelRaised: "#17191c"
-  readonly property color telemetry: "#c8cdd3"
-  readonly property color signal: "#f1f3f5"
-  readonly property color reentry: "#d51f2d"
-  readonly property color frost: "#e8eaed"
-  readonly property color dim: Qt.alpha(root.frost, 0.68)
-  readonly property color faint: Qt.alpha(root.frost, 0.44)
-  readonly property color hairline: Qt.alpha(root.frost, 0.12)
+  // ------------------------------------------------------------------ theme
+  readonly property color background: Color.menu.background
+  readonly property color foreground: Color.menu.text
+  readonly property color accent: Color.accent
+  readonly property color urgent: Color.urgent
+  readonly property color scrimColor: Color.menu.scrim
+  readonly property var cardBorder: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+  readonly property string fontFamily: Style.font.menuFamily
+  readonly property color dim: Qt.darker(foreground, 1.4)
+  readonly property color faint: Util.alpha(foreground, 0.46)
+  readonly property color hairline: Util.alpha(foreground, 0.10)
+  readonly property color surface: Util.alpha(foreground, 0.035)
 
-  readonly property string fontFamily: Style.font.family
-
+  // ----------------------------------------------------------------- state
   readonly property string evidenceState: jackal.evidenceState
   readonly property bool affirmative: Model.isAffirmative(root.evidenceState)
   readonly property bool alarming: Model.isAlarming(root.evidenceState)
   readonly property color stateColor: root.alarming
-    ? root.reentry : (root.affirmative ? root.signal : root.dim)
+    ? root.urgent : (root.affirmative ? root.foreground : root.dim)
+  readonly property string ageText: Model.ageText(jackal.receivedAtMs, jackal.nowMs)
 
-  readonly property string ageText:
-    Model.ageText(jackal.receivedAtMs, jackal.nowMs)
+  // ------------------------------------------------------------- aggregates
+  // Counts of ledger rows over the operator's window. Recall, not evidence.
+  readonly property int windowMs: jackal.activityWindowHours * 3600 * 1000
+  readonly property var scoped: Model.rowsWithin(jackal.allResults, jackal.nowMs, root.windowMs)
+  readonly property var summary: Model.ledgerSummary(jackal.allResults, jackal.nowMs, root.windowMs)
+  readonly property var allSummary: Model.ledgerSummary(jackal.allResults, jackal.nowMs, 0)
+  readonly property var activity: Model.activityBuckets(jackal.allResults, jackal.nowMs, root.windowMs, 48)
+  readonly property var histogram: Model.statusHistogram(root.scoped)
+  readonly property var leaderboard: Model.toolLeaderboard(jackal.allResults, 7)
+  readonly property var newest: jackal.allResults.length > 0 ? jackal.allResults[0] : null
+  readonly property bool newestFresh: jackal.ledgerAdvancedAtMs > 0
+    && jackal.nowMs - jackal.ledgerAdvancedAtMs < 60000
+
+  // --------------------------------------------------------------- sections
+  property string section: "overview"
+  readonly property var sections: [
+    { key: "overview", label: "Overview", num: "1" },
+    { key: "ledger",   label: "Ledger",   num: "2" },
+    { key: "graph",    label: "Graph",    num: "3" },
+    { key: "probes",   label: "Probes",   num: "4" },
+    { key: "verify",   label: "Verify",   num: "5" },
+    { key: "register", label: "Register", num: "6" },
+    { key: "thoth",    label: "THOTH",    num: "7" }
+  ]
+
+  function sectionIndex(key) {
+    for (var i = 0; i < root.sections.length; i++)
+      if (root.sections[i].key === key) return i
+    return 0
+  }
+
+  function selectSection(key) {
+    if (root.sectionIndex(key) === 0 && key !== "overview") return
+    root.section = key
+    keyHost.forceActiveFocus()
+  }
+
+  function stepSection(delta) {
+    var next = root.sectionIndex(root.section) + delta
+    if (next < 0) next = root.sections.length - 1
+    if (next >= root.sections.length) next = 0
+    root.selectSection(root.sections[next].key)
+  }
+
+  // ------------------------------------------------------------ ledger view
+  property string feedFilter: "all"
+  property int feedCursor: -1
+  property int feedExpanded: -1
+  readonly property var feed: Model.feedRows(jackal.allResults, root.feedFilter, 400)
+  readonly property var feedFilters: [
+    { key: "all", label: "All", count: root.allSummary.allTotal },
+    { key: "answered", label: "Answered", count: root.allSummary.answered },
+    { key: "refused", label: "Refused", count: root.allSummary.refused },
+    { key: "formal", label: "Formal", count: root.allSummary.formal }
+  ]
+
+  function setFeedFilter(key) {
+    root.feedFilter = key
+    root.feedCursor = -1
+    root.feedExpanded = -1
+    if (feedList) feedList.positionViewAtBeginning()
+  }
+
+  function moveFeed(delta) {
+    if (root.feed.length === 0) return
+    var next = root.feedCursor < 0 ? (delta > 0 ? 0 : root.feed.length - 1) : root.feedCursor + delta
+    root.feedCursor = Math.max(0, Math.min(root.feed.length - 1, next))
+    if (feedList) feedList.positionViewAtIndex(root.feedCursor, ListView.Contain)
+  }
+
+  function toggleFeedRow(index) {
+    root.feedCursor = index
+    root.feedExpanded = root.feedExpanded === index ? -1 : index
+  }
 
   // ---------------------------------------------------------------- settings
   // Overlays are NOT handed `settings` by the shell the way bar widgets are.
-  // The overlay has to walk the shell config itself; if this is skipped the
-  // failure is silent and every value quietly falls back to a default.
+  // The overlay walks the shell config itself; if this were skipped the
+  // failure would be silent and every value would fall back to a default.
 
   function isPlainRecord(value) {
     return !!value && typeof value === "object" && !Array.isArray(value)
@@ -160,44 +217,39 @@ Item {
     return merged
   }
 
-  function selectSection(key) {
-    root.section = key
-    root.registerIndex = 0
-  }
-
-  function sectionIndex(key) {
-    for (var i = 0; i < root.sections.length; i++)
-      if (root.sections[i].key === key) return i
-    return 0
-  }
-
-  function stepSection(delta) {
-    var next = root.sectionIndex(root.section) + delta
-    if (next < 0) next = root.sections.length - 1
-    if (next >= root.sections.length) next = 0
-    root.selectSection(root.sections[next].key)
-  }
-
-  // Overlay lifecycle contract. The shell's plugin Loader hands the summon
-  // payload to open(); isOpen() then reads back `opened`. Without these the
-  // surface loads, reports nothing, and never paints.
+  // -------------------------------------------------------------- lifecycle
+  // The shell's plugin Loader hands the summon payload to open(); isOpen()
+  // then reads back `opened`. An optional { section } lands on that deck.
   function open(payloadJson) {
+    var requested = ""
+    if (payloadJson) {
+      try {
+        var parsed = JSON.parse(String(payloadJson))
+        if (parsed && typeof parsed.section === "string") requested = parsed.section
+      } catch (e) { /* an unreadable payload opens the overview */ }
+    }
+    if (requested !== "" && root.sectionIndex(requested) > 0 || requested === "overview")
+      root.section = requested
     root.opened = true
-    root.hoverNav = ""
+    jackal.live = true
     jackal.refreshIfStale()
     jackal.readInventory()
     jackal.readResults()
     jackal.readNonClaim()
+    // Name the provisioner and the tree state once per session; the pinned
+    // tree check is a separate observation from the doctor's probes.
+    if (!jackal.verifyReport) jackal.runVerify()
     // Mission control should not open on an empty instrument. This is a sweep
     // of the sealed evaluator like any other — still non-evidentiary, still
     // labelled as such on the canvas.
     if (jackal.graphPoints.length === 0 && !jackal.graphBusy)
       jackal.plotGraph(jackal.graphExpression, jackal.graphXMin, jackal.graphXMax)
+    Qt.callLater(function() { keyHost.forceActiveFocus() })
   }
 
   function close() {
     root.opened = false
-    root.hoverNav = ""
+    jackal.live = false
   }
 
   function dismiss() {
@@ -209,117 +261,83 @@ Item {
   Service {
     id: jackal
     settings: root.mergedSettings
+    // The bar widget's service keeps the session account current on its own
+    // clock; this copy probes on open and when asked, so two surfaces do not
+    // run two doctors every interval.
+    passive: true
   }
 
   // ------------------------------------------------------------------ shared
 
-  component Pill: Rectangle {
-    id: pill
-    property string label: ""
-    property color tone: root.telemetry
-    implicitWidth: pillText.implicitWidth + Style.space(14)
-    implicitHeight: pillText.implicitHeight + Style.space(8)
-    radius: Style.space(3)
-    color: Qt.alpha(pill.tone, 0.10)
-    border.width: 1
-    border.color: Qt.alpha(pill.tone, 0.42)
-    Text {
-      id: pillText
-      anchors.centerIn: parent
-      text: pill.label
-      color: pill.tone
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-      font.letterSpacing: 1.1
-    }
-  }
-
-  component DeckTitle: RowLayout {
-    id: deckTitle
+  // A card: the kit's alpha-on-foreground surface with a section title and a
+  // note that states the standing of what it holds.
+  component Card: BorderSurface {
+    id: card
     property string title: ""
     property string note: ""
-    spacing: Style.space(10)
-    Text {
-      text: deckTitle.title
-      color: root.telemetry
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-      font.letterSpacing: 1.5
-    }
-    Rectangle {
-      Layout.fillWidth: true
-      Layout.preferredHeight: 1
-      color: root.hairline
-    }
-    Text {
-      visible: deckTitle.note !== ""
-      text: deckTitle.note
-      color: root.faint
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-    }
-  }
+    property bool urgentEdge: false
+    default property alias content: body.data
 
-  component Stat: Rectangle {
-    id: stat
-    property string label: ""
-    property string value: ""
-    property color tone: root.signal
-    Layout.fillWidth: true
-    implicitHeight: statCol.implicitHeight + 2 * Style.space(12)
-    color: root.panelRaised
-    radius: Style.space(4)
-    border.width: 1
-    border.color: root.hairline
+    color: root.surface
+    borderSpec: Border.flat(card.urgentEdge ? Util.alpha(root.urgent, 0.35) : root.hairline, 1)
+    radius: Style.cornerRadius
+    padding: Style.space(14)
+    implicitHeight: body.implicitHeight + card.padding * 2
+      + (heading.visible ? heading.implicitHeight + Style.space(10) : 0)
+
+    JkSectionTitle {
+      id: heading
+      visible: card.title !== ""
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.leftMargin: card.contentLeftInset
+      anchors.rightMargin: card.contentRightInset
+      anchors.topMargin: card.contentTopInset
+      title: card.title
+      note: card.note
+      foreground: root.foreground
+      fontFamily: root.fontFamily
+    }
+
     ColumnLayout {
-      id: statCol
-      anchors.fill: parent
-      anchors.margins: Style.space(12)
-      spacing: Style.space(4)
-      Text {
-        text: stat.label
-        color: root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        font.letterSpacing: 1.2
-        Layout.fillWidth: true
-        elide: Text.ElideRight
-      }
-      Text {
-        text: stat.value
-        color: stat.tone
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        font.bold: true
-        Layout.fillWidth: true
-        elide: Text.ElideRight
-      }
+      id: body
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      anchors.top: heading.visible ? heading.bottom : parent.top
+      anchors.leftMargin: card.contentLeftInset
+      anchors.rightMargin: card.contentRightInset
+      anchors.bottomMargin: card.contentBottomInset
+      anchors.topMargin: heading.visible ? Style.space(10) : card.contentTopInset
+      spacing: Style.space(10)
     }
   }
 
-  component KeyValue: RowLayout {
-    id: kv
-    property string label: ""
-    property string value: ""
-    property color tone: root.dim
-    spacing: Style.space(10)
-    Text {
-      text: kv.label
-      color: root.faint
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      Layout.preferredWidth: Style.space(150)
-    }
-    Text {
-      text: kv.value
-      color: kv.tone
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      Layout.fillWidth: true
-      elide: Text.ElideRight
-    }
+  component Caption: Text {
+    textFormat: Text.PlainText
+    color: root.faint
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    wrapMode: Text.WordWrap
+  }
+
+  component Body: Text {
+    textFormat: Text.PlainText
+    color: root.dim
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.bodySmall
+    wrapMode: Text.WordWrap
+  }
+
+  component ColumnHead: Text {
+    textFormat: Text.PlainText
+    color: root.faint
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    font.bold: true
+    font.letterSpacing: 1.0
+    elide: Text.ElideRight
   }
 
   // ------------------------------------------------------------------ window
@@ -336,316 +354,246 @@ Item {
       ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     Rectangle {
-      id: scrim
       anchors.fill: parent
-      color: Qt.alpha(root.panelVoid, 0.965)
-      focus: root.opened
+      color: root.scrimColor
+    }
 
-      Keys.onPressed: function (event) {
-        if (event.key === Qt.Key_Escape) {
-          root.dismiss(); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Tab) {
-          root.stepSection(1); event.accepted = true; return
-        }
-        if (event.key === Qt.Key_Backtab) {
-          root.stepSection(-1); event.accepted = true; return
-        }
-        // Actions take Shift so they cannot collide with section letters.
-        // R and V would otherwise mean two different things on one key.
-        if (event.modifiers & Qt.ShiftModifier) {
-          if (event.key === Qt.Key_R) { jackal.refresh(); event.accepted = true }
-          else if (event.key === Qt.Key_V) { jackal.verifyArtifact(); event.accepted = true }
-          else if (event.key === Qt.Key_C) {
-            jackal.copyText(jackal.packageSha, "package digest"); event.accepted = true
-          }
-          else if (event.key === Qt.Key_N) {
-            jackal.copyText(jackal.nonClaim, "non-claim"); event.accepted = true
-          }
-          if (event.accepted) return
-        }
-        if (event.key === Qt.Key_O) { root.selectSection("overview"); event.accepted = true }
-        else if (event.key === Qt.Key_G) { root.selectSection("graph"); event.accepted = true }
-        else if (event.key === Qt.Key_P) { root.selectSection("probes"); event.accepted = true }
-        else if (event.key === Qt.Key_L) { root.selectSection("ledger"); event.accepted = true }
-        else if (event.key === Qt.Key_V) { root.selectSection("verify"); event.accepted = true }
-        else if (event.key === Qt.Key_T) { root.selectSection("thoth"); event.accepted = true }
-        else if (event.key === Qt.Key_R) { root.selectSection("register"); event.accepted = true }
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.dismiss()
+    }
+
+    BorderSurface {
+      id: card
+      width: Math.min(Style.space(1340), cockpitWindow.width - Style.space(36))
+      height: Math.min(Style.space(840), cockpitWindow.height - Style.space(36))
+      anchors.centerIn: parent
+      color: root.background
+      borderSpec: root.cardBorder
+      radius: Style.cornerRadius
+      padding: Style.space(20)
+      opacity: root.opened ? 1 : 0
+      scale: root.opened ? 1 : 0.985
+      Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+      Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+      MouseArea {
+        anchors.fill: parent
+        onClicked: keyHost.forceActiveFocus()
       }
 
-      RowLayout {
+      FocusScope {
+        id: keyHost
         anchors.fill: parent
-        anchors.margins: Style.space(18)
-        spacing: Style.space(18)
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
+        focus: true
 
-        // ----------------------------------------------------------- nav rail
-        Rectangle {
-          Layout.preferredWidth: Style.space(214)
-          Layout.fillHeight: true
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
-
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(6)
-
-            Text {
-              text: "JACKAL"
-              color: root.signal
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              font.bold: true
-              font.letterSpacing: 3.0
+        // Keys reach here only when no text field holds them, so typing an
+        // expression into the graph deck never switches decks. Actions take
+        // Shift so they cannot collide with the deck numbers.
+        Keys.onPressed: function (event) {
+          if (event.key === Qt.Key_Escape) { root.dismiss(); event.accepted = true; return }
+          if (event.key === Qt.Key_Tab) { root.stepSection(1); event.accepted = true; return }
+          if (event.key === Qt.Key_Backtab) { root.stepSection(-1); event.accepted = true; return }
+          if (event.modifiers & Qt.ShiftModifier) {
+            if (event.key === Qt.Key_R) { jackal.refresh(); event.accepted = true }
+            else if (event.key === Qt.Key_V) { jackal.verifyArtifact(); event.accepted = true }
+            else if (event.key === Qt.Key_C) {
+              jackal.copyText(jackal.packageSha, "package digest"); event.accepted = true
             }
-            Text {
-              text: "+ THOTH"
-              color: root.reentry
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 2.2
+            else if (event.key === Qt.Key_N) {
+              jackal.copyText(jackal.nonClaim, "non-claim"); event.accepted = true
             }
-
-            Rectangle {
-              Layout.fillWidth: true
-              Layout.topMargin: Style.space(8)
-              Layout.bottomMargin: Style.space(6)
-              Layout.preferredHeight: Style.space(2)
-              gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: root.reentry }
-                GradientStop { position: 0.62; color: root.telemetry }
-                GradientStop { position: 1.0; color: root.reentry }
-              }
-            }
-
-            Repeater {
-              model: root.sections
-              delegate: Rectangle {
-                id: navItem
-                required property var modelData
-                readonly property bool active: root.section === navItem.modelData.key
-                readonly property bool hovered: root.hoverNav === navItem.modelData.key
-                Layout.fillWidth: true
-                implicitHeight: navCol.implicitHeight + Style.space(16)
-                radius: Style.space(3)
-                color: navItem.active
-                  ? Qt.alpha(root.reentry, 0.13)
-                  : (navItem.hovered ? Qt.alpha(root.frost, 0.05) : "transparent")
-                border.width: 1
-                border.color: navItem.active
-                  ? Qt.alpha(root.reentry, 0.55) : "transparent"
-
-                ColumnLayout {
-                  id: navCol
-                  anchors.fill: parent
-                  anchors.leftMargin: Style.space(11)
-                  anchors.rightMargin: Style.space(9)
-                  spacing: Style.space(2)
-                  Text {
-                    text: (navItem.active ? "▸ " : "  ") + navItem.modelData.label
-                    color: navItem.active ? root.signal : root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                    font.letterSpacing: 1.4
-                  }
-                  Text {
-                    text: "   " + navItem.modelData.hint
-                    color: root.faint
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                  }
-                }
-
-                MouseArea {
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onEntered: root.hoverNav = navItem.modelData.key
-                  onExited: {
-                    if (root.hoverNav === navItem.modelData.key) root.hoverNav = ""
-                  }
-                  onClicked: root.selectSection(navItem.modelData.key)
-                }
-              }
-            }
-
-            Item { Layout.fillHeight: true }
-
-            Pill {
-              label: jackal.busy ? "PROBING…" : Model.stateLabel(root.evidenceState)
-              tone: jackal.busy ? root.reentry : root.stateColor
-            }
-            Text {
-              text: "probed " + root.ageText
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-            Text {
-              text: "Tab · O G P L V T R · Shift+R probe · Shift+V verify · Esc closes"
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              Layout.fillWidth: true
-              wrapMode: Text.WordWrap
+            if (event.accepted) return
+          }
+          if (event.key >= Qt.Key_1 && event.key <= Qt.Key_7) {
+            root.selectSection(root.sections[event.key - Qt.Key_1].key)
+            event.accepted = true
+            return
+          }
+          if (root.section === "ledger") {
+            if (event.key === Qt.Key_J || event.key === Qt.Key_Down) { root.moveFeed(1); event.accepted = true; return }
+            if (event.key === Qt.Key_K || event.key === Qt.Key_Up) { root.moveFeed(-1); event.accepted = true; return }
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+              if (root.feedCursor >= 0) root.toggleFeedRow(root.feedCursor)
+              event.accepted = true
+              return
             }
           }
         }
 
-        // -------------------------------------------------------------- main
         ColumnLayout {
-          Layout.fillWidth: true
-          Layout.fillHeight: true
+          anchors.fill: parent
           spacing: Style.space(14)
 
-          // header
-          Rectangle {
+          // ------------------------------------------------------- header
+          RowLayout {
             Layout.fillWidth: true
-            implicitHeight: headerRow.implicitHeight + 2 * Style.space(16)
-            color: root.panelSurface
-            radius: Style.space(5)
-            border.width: 1
-            border.color: root.hairline
+            spacing: Style.space(12)
 
-            RowLayout {
-              id: headerRow
-              anchors.fill: parent
-              anchors.margins: Style.space(16)
-              spacing: Style.space(16)
-
-              ColumnLayout {
-                spacing: Style.space(3)
+            // Bounded, so a long tagline can never push the decks off the card.
+            ColumnLayout {
+              Layout.fillWidth: false
+              Layout.preferredWidth: Style.space(270)
+              Layout.maximumWidth: Style.space(270)
+              spacing: Style.space(1)
+              Row {
+                spacing: Style.space(10)
                 Text {
-                  text: "MISSION CONTROL"
-                  color: root.signal
+                  textFormat: Text.PlainText
+                  text: "JACKAL"
+                  color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
+                  font.pixelSize: Style.font.heading
                   font.bold: true
-                  font.letterSpacing: 2.6
+                  font.letterSpacing: 4.5
+                  anchors.verticalCenter: parent.verticalCenter
                 }
-                Text {
-                  text: "THOTH lives inside JACKAL — one engine, one identity."
-                  color: root.faint
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                JkChip {
+                  label: "+ THOTH"
+                  tone: root.accent
+                  fontFamily: root.fontFamily
+                  anchors.verticalCenter: parent.verticalCenter
                 }
               }
-
-              Item { Layout.fillWidth: true }
-
-              Pill {
-                label: jackal.probePassed + "/" + jackal.probeTotal + " FUNCTION"
-                tone: jackal.probeTotal > 0 && jackal.probePassed === jackal.probeTotal
-                  ? root.signal : root.reentry
+              Caption {
+                Layout.fillWidth: true
+                text: "evidence kernel · mission control"
+                elide: Text.ElideRight
+                wrapMode: Text.NoWrap
               }
-              Pill {
-                label: jackal.epoch !== "" ? "RUNTIME " + jackal.epoch : "RUNTIME —"
-                tone: root.telemetry
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Row {
+              spacing: Style.space(2)
+              Repeater {
+                model: root.sections
+                delegate: Button {
+                  required property var modelData
+                  readonly property bool current: root.section === modelData.key
+                  text: modelData.num + " " + modelData.label
+                  selected: current
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  fontSize: Style.font.bodySmall
+                  horizontalPadding: Style.space(10)
+                  verticalPadding: Style.space(7)
+                  onClicked: root.selectSection(modelData.key)
+                }
               }
-              Pill {
-                label: jackal.identityMatch ? "IDENTITY MATCH" : "IDENTITY UNPROVEN"
-                tone: jackal.identityMatch ? root.signal : root.reentry
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Row {
+              spacing: Style.space(8)
+
+              JkChip {
+                label: jackal.busy ? "PROBING…" : Model.stateLabel(root.evidenceState)
+                tone: root.stateColor
+                dot: true
+                solid: root.affirmative
+                fontFamily: root.fontFamily
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              JkChip {
+                visible: jackal.epoch !== ""
+                label: jackal.epoch
+                tone: root.foreground
+                fontFamily: root.fontFamily
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              Caption {
+                text: "probed " + root.ageText
+                anchors.verticalCenter: parent.verticalCenter
               }
 
+              // Live marker: blinks once per ledger advance. It is a heartbeat
+              // of the file, not a claim about anything in it.
               Rectangle {
-                implicitWidth: Style.space(30)
-                implicitHeight: Style.space(30)
-                radius: Style.space(3)
-                color: closeArea.containsMouse
-                  ? Qt.alpha(root.reentry, 0.18) : "transparent"
-                border.width: 1
-                border.color: Qt.alpha(root.reentry, 0.45)
-                Text {
-                  anchors.centerIn: parent
-                  text: "✕"
-                  color: root.reentry
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
+                id: liveDot
+                width: Style.space(8)
+                height: width
+                radius: width / 2
+                color: root.accent
+                opacity: 0.35
+                anchors.verticalCenter: parent.verticalCenter
+                SequentialAnimation {
+                  id: liveBlink
+                  NumberAnimation { target: liveDot; property: "opacity"; to: 1; duration: 80 }
+                  NumberAnimation { target: liveDot; property: "opacity"; to: 0.35; duration: 900; easing.type: Easing.OutCubic }
                 }
-                MouseArea {
-                  id: closeArea
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.dismiss()
+                Connections {
+                  target: jackal
+                  function onLedgerAdvanced() { liveBlink.restart() }
                 }
+              }
+
+              Button {
+                iconText: "✕"
+                tooltipText: "Close  (Esc)"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                iconSize: Style.font.body
+                horizontalPadding: Style.space(8)
+                verticalPadding: Style.space(5)
+                bordered: true
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: root.dismiss()
               }
             }
           }
 
-          // canvas
+          Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
+
+          // ------------------------------------------------------- decks
           StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.sectionIndex(root.section)
 
             OverviewSection {}
+            LedgerSection {}
             GraphSection {}
             ProbesSection {}
-            LedgerSection {}
             VerifySection {}
-            ThothSection {}
             RegisterSection {}
+            ThothSection {}
           }
 
-          // pinned laws — never inside a scroll area
-          Rectangle {
+          // ------------------------------------------------- pinned laws
+          // Outside every scroll area, because these are the lines that must
+          // never be scrolled away.
+          Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
+
+          RowLayout {
             Layout.fillWidth: true
-            implicitHeight: lawsCol.implicitHeight + 2 * Style.space(14)
-            color: root.panelSurface
-            radius: Style.space(5)
-            border.width: 1
-            border.color: Qt.alpha(root.reentry, 0.30)
+            spacing: Style.space(14)
 
-            ColumnLayout {
-              id: lawsCol
-              anchors.fill: parent
-              anchors.margins: Style.space(14)
-              spacing: Style.space(5)
-
-              RowLayout {
-                spacing: Style.space(10)
-                Text {
-                  text: "ASSURANCE ≠ CONSEQUENCE"
-                  color: root.reentry
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  font.letterSpacing: 1.4
-                }
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
-                Text {
-                  text: "A ceiling is an upper bound, never a grant."
-                  color: root.faint
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-              }
-              Text {
-                text: "Refusal is a first-class answer. A refused question is answered — "
-                  + "it is not retried on a weaker lane to obtain some number."
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-              }
-              Text {
-                visible: jackal.nonClaim !== ""
-                text: "NON-CLAIM · " + jackal.nonClaim
-                color: root.telemetry
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-              }
+            Text {
+              textFormat: Text.PlainText
+              text: "ASSURANCE ≠ CONSEQUENCE"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              font.letterSpacing: 1.3
+            }
+            Caption {
+              Layout.fillWidth: true
+              text: "A ceiling is an upper bound, never a grant. Refusal is a first-class answer — "
+                + "a refused question is answered, not retried on a weaker lane to obtain some number."
+                + (jackal.nonClaim !== "" ? "   ·   NON-CLAIM  " + jackal.nonClaim : "")
+              elide: Text.ElideRight
+              wrapMode: Text.NoWrap
+            }
+            Caption {
+              text: "1–7 decks · Tab · Shift+R probe · Shift+V verify · Esc"
             }
           }
         }
@@ -653,501 +601,396 @@ Item {
     }
   }
 
-  // The newest ledger entry, carried at card weight. Ported from the dropdown
-  // so the account survives the panel becoming a pill: it is recall, and it
-  // says so on its face rather than implying the answer was re-verified.
-  component LatestAnswerCard: Rectangle {
-    id: latestCard
-    property var row: null
-    readonly property color tone:
-      latestCard.row && latestCard.row.refused ? root.dim : root.telemetry
-
-    implicitHeight: latestContent.height + 2 * Style.space(11)
-    radius: Style.space(4)
-    color: root.panelSurface
-    border.color: Qt.alpha(latestCard.tone, 0.52)
-    border.width: 1
-    clip: true
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.bottom: parent.bottom
-      width: Style.space(3)
-      color: latestCard.tone
-    }
-
-    Column {
-      id: latestContent
-      x: Style.space(13)
-      y: Style.space(11)
-      width: Math.max(0, latestCard.width - Style.space(13) - Style.space(11))
-      spacing: Style.space(4)
-
-      Row {
-        width: parent.width
-        spacing: Style.space(8)
-        Text {
-          id: latestTitle
-          text: "LATEST ANSWER  /  LOCAL RECALL"
-          color: root.telemetry
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          font.letterSpacing: 1.4
-        }
-        Item {
-          width: Math.max(0, parent.width - latestTitle.width
-            - latestStatus.width - 2 * parent.spacing)
-          height: 1
-        }
-        Pill {
-          id: latestStatus
-          visible: latestCard.row !== null
-          label: latestCard.row ? String(latestCard.row.status || "") : ""
-          tone: latestCard.tone
-        }
-      }
-
-      Text {
-        width: parent.width
-        text: latestCard.row ? String(latestCard.row.tool || "")
-          : "No recorded answer yet"
-        color: root.frost
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        font.bold: true
-        elide: Text.ElideRight
-      }
-
-      Text {
-        visible: latestCard.row ? String(latestCard.row.request || "") !== "" : false
-        height: visible ? implicitHeight : 0
-        width: parent.width
-        text: latestCard.row ? String(latestCard.row.request || "") : ""
-        color: root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
-      }
-
-      Text {
-        width: parent.width
-        text: latestCard.row
-          ? (String(latestCard.row.detail || "") !== ""
-             ? String(latestCard.row.detail) : "No result detail recorded.")
-          : "The newest ledger entry appears here without opening a section."
-        color: latestCard.row && latestCard.row.refused ? root.dim : root.frost
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-        maximumLineCount: 2
-        elide: Text.ElideRight
-      }
-
-      Row {
-        visible: latestCard.row !== null
-        height: visible ? implicitHeight : 0
-        width: parent.width
-        spacing: Style.space(8)
-        Text {
-          id: latestAge
-          text: latestCard.row
-            ? Model.ageText(latestCard.row.atMs, jackal.nowMs) : ""
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-        Item {
-          width: Math.max(0, parent.width - latestAge.width
-            - latestRecallNote.width - 2 * parent.spacing)
-          height: 1
-        }
-        Text {
-          id: latestRecallNote
-          text: "recall only · not re-verified"
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-      }
-    }
-  }
-
-  // --------------------------------------------------------- OVERVIEW section
-  // The bird's-eye view: every account visible at once, none of them merged.
-  // Each tile is a window onto the same data the dedicated section shows in
-  // full — never a summary score, and never a promoted claim.
+  // ========================================================= OVERVIEW deck
+  // Every account visible at once, none of them merged. Each card is a window
+  // onto the same data the dedicated deck shows in full — never a score, and
+  // never a promoted claim.
 
   component OverviewSection: Item {
     RowLayout {
       anchors.fill: parent
-      spacing: Style.space(12)
+      spacing: Style.space(14)
 
-      // ---- left: the instrument, and what it has actually returned --------
+      // ---- left: what the kernel has been doing ------------------------------
       ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.preferredWidth: 1000
-        spacing: Style.space(12)
+        Layout.preferredWidth: 62
+        Layout.minimumWidth: 0
+        spacing: Style.space(14)
 
-        Rectangle {
+        RowLayout {
           Layout.fillWidth: true
-          Layout.fillHeight: true
-          Layout.preferredHeight: 600
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
+          spacing: Style.space(10)
 
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(10)
-
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "GRAPH DECK — LIVE SWEEP"
-              note: "graph pixels are visualization, never evidence"
-            }
-            SweepPlot {
-              Layout.fillWidth: true
-              Layout.fillHeight: true
-            }
-            Text {
-              Layout.fillWidth: true
-              text: jackal.graphExpression + "   x ∈ [" + jackal.graphXMin
-                + ", " + jackal.graphXMax + "]"
-                + (jackal.graphMeta !== "" ? "   ·   " + jackal.graphMeta : "")
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              elide: Text.ElideRight
-            }
+          JkStat {
+            Layout.fillWidth: true
+            label: "Calls"
+            value: String(root.summary.total)
+            sub: "last " + Model.windowLabel(root.windowMs) + " · recall"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+          JkStat {
+            Layout.fillWidth: true
+            label: "Refused"
+            value: String(root.summary.refused)
+            sub: root.summary.refused > 0 ? "named reasons" : "none in window"
+            foreground: root.foreground
+            tone: root.summary.refused > 0 ? root.urgent : root.foreground
+            fontFamily: root.fontFamily
+          }
+          JkStat {
+            Layout.fillWidth: true
+            label: "Round trip"
+            value: Model.formatMs(root.summary.medianMs)
+            sub: root.summary.p90Ms >= 0 ? "median · p90 " + Model.formatMs(root.summary.p90Ms) : "median · wrapper timing"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+          JkStat {
+            Layout.fillWidth: true
+            label: "Receipts"
+            value: jackal.receiptCount >= 0 ? String(jackal.receiptCount) : "—"
+            sub: "retained · re-verifiable"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+          JkStat {
+            Layout.fillWidth: true
+            label: "Declared tools"
+            value: jackal.declaredToolCount > 0 ? String(jackal.declaredToolCount) : "—"
+            sub: jackal.epoch !== "" ? "inventory · " + jackal.epoch : "no runtime named"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
           }
         }
 
-        Rectangle {
+        Card {
           Layout.fillWidth: true
           Layout.fillHeight: true
-          Layout.preferredHeight: 380
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
+          Layout.preferredHeight: 300
+          title: "Activity"
+          note: "calls per " + Model.windowLabel(root.activity.bucketMs) + " · recall, not evidence"
 
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(10)
+          JkTimeline {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: Style.space(110)
+            series: root.activity
+            foreground: root.foreground
+            accent: root.accent
+            urgent: root.urgent
+            fontFamily: root.fontFamily
+          }
 
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "LATEST RESULTS"
-              note: "recall, not evidence"
-            }
+          JkSpectrum {
+            Layout.fillWidth: true
+            histogram: root.histogram
+            foreground: root.foreground
+            accent: root.accent
+            urgent: root.urgent
+            fontFamily: root.fontFamily
+          }
+        }
 
-            Flickable {
-              id: ovLedgerFlick
-              Layout.fillWidth: true
-              Layout.fillHeight: true
-              contentWidth: width
-              contentHeight: ovLedgerCol.height
-              clip: true
-              pixelAligned: true
-              interactive: contentHeight > height
+        Card {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          Layout.preferredHeight: 420
+          title: "Latest answers"
+          note: "newest first · recall, not evidence"
 
-              Column {
-                id: ovLedgerCol
-                width: ovLedgerFlick.width
-                spacing: Style.space(4)
+          Caption {
+            visible: !root.newest
+            Layout.fillWidth: true
+            text: "No recorded answer yet. Rows appear here as the kernel is called."
+          }
 
-                Text {
-                  visible: jackal.results.length === 0
-                  text: "no recorded results yet"
-                  color: root.faint
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
+          JkResultRow {
+            visible: !!root.newest
+            Layout.fillWidth: true
+            row: root.newest
+            nowMs: jackal.nowMs
+            foreground: root.foreground
+            accentColor: root.accent
+            urgent: root.urgent
+            fontFamily: root.fontFamily
+            fresh: root.newestFresh
+            onClicked: root.selectSection("ledger")
+          }
 
-                Repeater {
-                  model: jackal.results
-                  delegate: Rectangle {
-                    id: ovRes
-                    required property var modelData
-                    // parseResults() already applied resultRow() to every
-                    // entry, so these ARE rows. Transforming again dropped
-                    // detail and atMs while status/tool survived.
-                    readonly property var row: ovRes.modelData
-                    width: ovLedgerCol.width
-                    height: ovResCol.height + 2 * Style.space(9)
-                    radius: Style.space(3)
-                    color: root.panelRaised
-                    border.width: 1
-                    border.color: root.hairline
+          Flickable {
+            id: overviewFeed
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: width
+            contentHeight: overviewFeedColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                    Column {
-                      id: ovResCol
-                      x: Style.space(10)
-                      y: Style.space(9)
-                      width: ovRes.width - 2 * Style.space(10)
-                      spacing: Style.space(4)
+            Column {
+              id: overviewFeedColumn
+              width: overviewFeed.width
+              spacing: Style.space(2)
 
-                      Row {
-                        spacing: Style.space(9)
-                        Pill {
-                          label: String(ovRes.row.status || "—")
-                          tone: ovRes.row.refused ? root.reentry : root.telemetry
-                        }
-                        Text {
-                          anchors.verticalCenter: parent.verticalCenter
-                          text: String(ovRes.row.tool || "")
-                          color: root.signal
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
-                          font.bold: true
-                        }
-                        Text {
-                          anchors.verticalCenter: parent.verticalCenter
-                          text: Model.ageText(ovRes.row.atMs, jackal.nowMs)
-                          color: root.faint
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
-                        }
-                      }
-
-                      // A full-width line of its own rather than a share of the
-                      // header row: the answer is the point of the entry, and
-                      // sizing it against its siblings collapsed it to nothing.
-                      Text {
-                        width: parent.width
-                        text: String(ovRes.row.detail || "")
-                        color: ovRes.row.refused ? root.reentry : root.dim
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.caption
-                        elide: Text.ElideRight
-                      }
-                    }
-                  }
+              Repeater {
+                model: jackal.allResults.slice(1, 1 + Math.max(3, jackal.feedLimit))
+                delegate: JkResultRow {
+                  required property var modelData
+                  width: overviewFeedColumn.width
+                  row: modelData
+                  nowMs: jackal.nowMs
+                  compact: true
+                  foreground: root.foreground
+                  accentColor: root.accent
+                  urgent: root.urgent
+                  fontFamily: root.fontFamily
+                  onClicked: root.selectSection("ledger")
                 }
               }
+            }
+          }
+
+          Row {
+            Layout.fillWidth: true
+            spacing: Style.space(10)
+            Button {
+              text: "Open the ledger"
+              iconText: "󰈙"
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.caption
+              iconSize: Style.font.bodySmall
+              onClicked: root.selectSection("ledger")
+            }
+            Caption {
+              text: root.allSummary.allTotal + " rows on disk · " + root.allSummary.tools + " distinct tools · "
+                + Model.countText(root.allSummary.refused, "refusal", "refusals")
+              anchors.verticalCenter: parent.verticalCenter
             }
           }
         }
       }
 
-      // ---- right: the accounts that bound what any of it may decide -------
+      // ---- right: the accounts that bound what any of it may decide ----------
       ColumnLayout {
+        Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.preferredWidth: 620
-        spacing: Style.space(12)
+        Layout.preferredWidth: 38
+        Layout.minimumWidth: 0
+        spacing: Style.space(14)
 
-        Rectangle {
+        Card {
           Layout.fillWidth: true
-          implicitHeight: ovFn.implicitHeight + 2 * Style.space(14)
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
+          title: "Session function"
+          note: "this shell session only"
 
-          ColumnLayout {
-            id: ovFn
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(9)
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(12)
 
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "SESSION FUNCTION"
-              note: "this shell session only"
+            Text {
+              textFormat: Text.PlainText
+              text: jackal.busy ? "PROBING…" : Model.stateLabel(root.evidenceState)
+              color: root.stateColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.display
+              font.bold: true
+              font.letterSpacing: 1.5
             }
-            RowLayout {
+            ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(10)
-              Pill {
-                label: jackal.probePassed + " / " + jackal.probeTotal + " PROBES"
-                tone: jackal.probeTotal > 0
-                  && jackal.probePassed === jackal.probeTotal
-                  ? root.signal : root.reentry
-              }
-              Pill {
-                label: jackal.verdict !== "" ? jackal.verdict.toUpperCase() : "NO VERDICT"
-                tone: root.stateColor
-              }
-              Item { Layout.fillWidth: true }
+              spacing: Style.space(2)
               Text {
-                text: "probed " + root.ageText
-                color: root.faint
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: jackal.probeTotal > 0 ? jackal.probePassed + " / " + jackal.probeTotal + " classes at class" : "not probed"
+                color: root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                elide: Text.ElideRight
+              }
+              Caption {
+                Layout.fillWidth: true
+                text: "one real tool per declared class · probed " + root.ageText
+                elide: Text.ElideRight
+                wrapMode: Text.NoWrap
               }
             }
-          }
-        }
-
-        Rectangle {
-          Layout.fillWidth: true
-          implicitHeight: ovRt.implicitHeight + 2 * Style.space(14)
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
-
-          ColumnLayout {
-            id: ovRt
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(7)
-
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "SEALED RUNTIME · THOTH"
-              note: "one engine, one identity"
-            }
-            KeyValue {
-              Layout.fillWidth: true
-              label: "EPOCH"
-              value: jackal.epoch !== "" ? jackal.epoch : "—"
-              tone: root.telemetry
-            }
-            KeyValue {
-              Layout.fillWidth: true
-              label: "IDENTITY"
-              value: jackal.identityMatch ? "match" : "unproven"
-              tone: jackal.identityMatch ? root.signal : root.reentry
-            }
-            KeyValue {
-              Layout.fillWidth: true
-              label: "DECLARED TOOLS"
-              value: String(jackal.declaredToolCount)
-            }
-            KeyValue {
-              Layout.fillWidth: true
-              label: "CATALOG SHA"
-              value: jackal.catalogSha !== ""
-                ? Model.shortHash(jackal.catalogSha) : "—"
+            Button {
+              iconText: Model.GLYPH.refresh
+              tooltipText: "Probe now  (Shift+R)"
+              iconSpinning: jackal.busy
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              iconSize: Style.font.title
+              horizontalPadding: Style.space(8)
+              verticalPadding: Style.space(6)
+              onClicked: jackal.refresh()
             }
           }
-        }
 
-        Rectangle {
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
+          Caption {
+            visible: !root.affirmative
+            Layout.fillWidth: true
+            text: Model.stateBlurb(root.evidenceState, jackal.report)
+            color: root.alarming ? root.urgent : root.faint
+          }
 
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(9)
+          GridLayout {
+            Layout.fillWidth: true
+            columns: 2
+            columnSpacing: Style.space(14)
+            rowSpacing: Style.space(4)
 
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "EVIDENCE REGISTER"
-              note: "both axes, never merged"
-            }
-
-            Flickable {
-              id: ovRegFlick
-              Layout.fillWidth: true
-              Layout.fillHeight: true
-              contentWidth: width
-              contentHeight: ovRegCol.height
-              clip: true
-              pixelAligned: true
-              interactive: contentHeight > height
-
-              Column {
-                id: ovRegCol
-                width: ovRegFlick.width
-                spacing: Style.space(3)
-
+            Repeater {
+              model: jackal.probeRows
+              delegate: RowLayout {
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: Style.space(8)
                 Text {
-                  visible: jackal.familyRows.length === 0
-                  text: "capability inventory not loaded"
-                  color: root.faint
+                  textFormat: Text.PlainText
+                  text: modelData.pass ? Model.GLYPH.pass : Model.GLYPH.fail
+                  color: modelData.pass ? root.foreground : root.urgent
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                 }
-
-                Repeater {
-                  model: jackal.familyRows
-                  delegate: Item {
-                    id: ovFam
-                    required property var modelData
-                    width: ovRegCol.width
-                    height: ovFamRow.height + Style.space(8)
-
-                    Row {
-                      id: ovFamRow
-                      width: ovFam.width
-                      spacing: Style.space(8)
-
-                      Text {
-                        width: Math.round(ovFam.width * 0.34)
-                        text: String(ovFam.modelData.family || "")
-                        color: root.signal
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.caption
-                        elide: Text.ElideRight
-                      }
-                      Text {
-                        width: Math.round(ovFam.width * 0.32)
-                        text: String(ovFam.modelData.assurance || "—")
-                        color: root.telemetry
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.caption
-                        elide: Text.ElideRight
-                      }
-                      Text {
-                        width: Math.round(ovFam.width * 0.30)
-                        text: String(ovFam.modelData.consequence || "—")
-                        color: root.dim
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.caption
-                        elide: Text.ElideRight
-                      }
-                    }
-                  }
+                Text {
+                  textFormat: Text.PlainText
+                  Layout.fillWidth: true
+                  text: modelData.name
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  text: modelData.executed !== "" ? modelData.executed : "—"
+                  color: modelData.pass ? root.faint : root.urgent
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
                 }
               }
             }
           }
         }
 
-        Rectangle {
+        Card {
           Layout.fillWidth: true
-          implicitHeight: ovVf.implicitHeight + 2 * Style.space(14)
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: Qt.alpha(root.reentry, 0.28)
+          title: "Sealed runtime · THOTH"
+          note: "one engine, one identity"
 
-          ColumnLayout {
-            id: ovVf
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(9)
+          JkKeyValue {
+            Layout.fillWidth: true
+            label: "Epoch"; value: jackal.epoch !== "" ? jackal.epoch : "—"
+            foreground: root.foreground; fontFamily: root.fontFamily
+          }
+          JkKeyValue {
+            Layout.fillWidth: true
+            label: "Identity"
+            value: jackal.report ? (jackal.identityMatch ? "match" : "unproven") : "—"
+            tone: jackal.report ? (jackal.identityMatch ? root.foreground : root.urgent) : root.dim
+            foreground: root.foreground; fontFamily: root.fontFamily
+          }
+          JkKeyValue {
+            Layout.fillWidth: true
+            label: "Package"
+            value: jackal.packageSha !== "" ? Model.shortHash(jackal.packageSha) : "—"
+            copyable: jackal.packageSha !== ""
+            foreground: root.foreground; fontFamily: root.fontFamily
+            onCopyRequested: jackal.copyText(jackal.packageSha, "package digest")
+          }
+          JkKeyValue {
+            Layout.fillWidth: true
+            label: "Runtime verify"
+            value: jackal.verifyText !== "" ? jackal.verifyText : "not run this session"
+            tone: jackal.verifyText === "" ? root.dim : (jackal.verifyText === "PASS" ? root.foreground : root.urgent)
+            foreground: root.foreground; fontFamily: root.fontFamily
+          }
+          JkKeyValue {
+            Layout.fillWidth: true
+            label: "Z3 · Anubis"
+            value: jackal.report
+              ? (jackal.z3Present ? "z3 present" : "z3 absent") + " · "
+                + (jackal.anubisPresent ? "compiler present" : "compiler absent")
+              : "—"
+            foreground: root.foreground; fontFamily: root.fontFamily
+          }
+          JkKeyValue {
+            Layout.fillWidth: true
+            label: "Host"; value: jackal.hostText !== "" ? jackal.hostText : "—"
+            foreground: root.foreground; fontFamily: root.fontFamily
+          }
+        }
 
-            DeckTitle {
+        Card {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          title: "Tools in use"
+          note: root.allSummary.tools + " distinct · " + root.allSummary.allTotal + " rows on disk"
+
+          Caption {
+            visible: root.leaderboard.length === 0
+            Layout.fillWidth: true
+            text: "no calls recorded yet"
+          }
+
+          Repeater {
+            model: root.leaderboard
+            delegate: JkBarRow {
+              required property var modelData
               Layout.fillWidth: true
-              title: "VERIFY"
-              note: "the one lane that acts"
+              name: modelData.tool
+              count: modelData.count
+              refusedCount: modelData.refused
+              share: modelData.share
+              foreground: root.foreground
+              accent: root.accent
+              urgent: root.urgent
+              fontFamily: root.fontFamily
             }
-            Text {
+          }
+
+          Item { Layout.fillHeight: true }
+        }
+
+        Card {
+          Layout.fillWidth: true
+          title: "Verify"
+          note: "the one lane that acts"
+          urgentEdge: !!jackal.verifyResult && Model.verifyIsAlarming(jackal.verifyResult)
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(10)
+            Button {
+              text: jackal.verifyBusy ? "Verifying…" : "Verify clipboard"
+              iconText: Model.GLYPH.verified
+              enabled: !jackal.verifyBusy
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              iconSize: Style.font.body
+              onClicked: jackal.verifyArtifact()
+            }
+            Body {
               Layout.fillWidth: true
               text: jackal.verifyResult
-                ? Model.verifyStatusLabel(jackal.verifyResult.status)
-                : (jackal.actionStatus !== "" ? jackal.actionStatus
-                   : "no artifact routed yet")
-              color: jackal.verifyResult
-                && Model.verifyIsAlarming(jackal.verifyResult)
-                ? root.reentry : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
+                ? Model.verifyStatusLabel(jackal.verifyResult.status) + " · " + Model.verifyRaisedByText(jackal.verifyResult)
+                : (jackal.actionStatus !== "" ? jackal.actionStatus : "no artifact routed yet")
+              color: jackal.verifyResult && Model.verifyIsAlarming(jackal.verifyResult) ? root.urgent : root.dim
+              elide: Text.ElideRight
+              wrapMode: Text.NoWrap
             }
           }
         }
@@ -1155,29 +998,111 @@ Item {
     }
   }
 
-  // The sweep instrument, extracted so the overview and the dedicated
-  // GRAPH section render the identical canvas rather than two drifting
-  // copies of the same paint code.
+  // ========================================================== LEDGER deck
+  // Local recall of returned answers, newest first, every row expandable to
+  // the fields and non-claims the wrapper recorded. A retained receipt is
+  // re-verified through the real front door in VERIFY — the row itself proves
+  // nothing; it is a line this tooling wrote.
+
+  component LedgerSection: Item {
+    Card {
+      anchors.fill: parent
+      title: "Ledger — local recall"
+      note: "recall, not evidence · ~/.local/state/jackal/results.jsonl"
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+
+        Row {
+          spacing: Style.space(4)
+          Repeater {
+            model: root.feedFilters
+            delegate: Button {
+              required property var modelData
+              text: modelData.label + "  " + modelData.count
+              selected: root.feedFilter === modelData.key
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.caption
+              horizontalPadding: Style.space(10)
+              verticalPadding: Style.space(5)
+              onClicked: root.setFeedFilter(modelData.key)
+            }
+          }
+        }
+        Item { Layout.fillWidth: true }
+        Caption {
+          text: root.feed.length + " rows · j/k walk · Enter expands · "
+            + "median " + Model.formatMs(root.allSummary.medianMs)
+            + " · span " + Model.dayClockText(root.allSummary.oldestMs) + " → " + Model.dayClockText(root.allSummary.newestMs)
+        }
+      }
+
+      ListView {
+        id: feedList
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        model: root.feed
+        clip: true
+        spacing: Style.space(2)
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        // Rows re-measure as they expand; cache a screenful so a walk stays smooth.
+        cacheBuffer: 800
+
+        delegate: JkResultRow {
+          required property var modelData
+          required property int index
+          width: ListView.view.width - Style.space(10)
+          row: modelData
+          nowMs: jackal.nowMs
+          foreground: root.foreground
+          accentColor: root.accent
+          urgent: root.urgent
+          fontFamily: root.fontFamily
+          expanded: root.feedExpanded === index
+          hasCursor: root.feedCursor === index
+          fresh: index === 0 && root.feedFilter === "all" && root.newestFresh
+          onHovered: function(on) { if (on) root.feedCursor = index }
+          onClicked: root.toggleFeedRow(index)
+          onVerifyRequested: function(digest) {
+            jackal.verifyReceiptDigest(digest)
+            root.selectSection("verify")
+          }
+        }
+
+        Caption {
+          visible: root.feed.length === 0
+          anchors.centerIn: parent
+          text: root.feedFilter === "all"
+            ? "no recorded results yet"
+            : "no " + root.feedFilter + " rows in the ledger"
+        }
+      }
+    }
+  }
+
+  // The sweep instrument, shared by the graph deck. Pixels are visualization,
+  // never evidence, and the canvas says so on its face.
   component SweepPlot: Rectangle {
     id: plotFrame
-    color: "#0d0e11"
-    radius: Style.space(3)
+    color: Util.alpha(root.foreground, 0.02)
+    radius: Style.cornerRadius
     border.width: 1
     border.color: root.hairline
     clip: true
 
-    Text {
+    Caption {
       anchors.centerIn: parent
       visible: jackal.graphPoints.length === 0 && !jackal.graphBusy
       text: jackal.graphError !== ""
         ? jackal.graphError
         : "no sweep yet — enter an expression and press SWEEP"
-      color: jackal.graphError !== "" ? root.reentry : root.faint
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      color: jackal.graphError !== "" ? root.urgent : root.faint
       horizontalAlignment: Text.AlignHCenter
       width: plotFrame.width - Style.space(40)
-      wrapMode: Text.WordWrap
     }
 
     Canvas {
@@ -1197,6 +1122,7 @@ Item {
       MouseArea {
         anchors.fill: parent
         hoverEnabled: true
+        acceptedButtons: Qt.NoButton
         onPositionChanged: function (mouse) {
           graphCanvas.hoverX = mouse.x
           graphCanvas.hovering = true
@@ -1208,7 +1134,7 @@ Item {
         }
       }
 
-onPaint: {
+      onPaint: {
         // Contracts this paint honours, all from Model.js:
         //   point        { x, y }  with y === null meaning REFUSED
         //   graphExtremes -> { min: {x,y}, max: {x,y} }  (may be null/null)
@@ -1219,26 +1145,26 @@ onPaint: {
         var h = graphCanvas.height
         var pts = graphCanvas.points
         if (!pts || pts.length === 0) return
-      
+
         var tickFont = Style.font.caption + "px " + root.fontFamily
         ctx.font = tickFont
-      
+
         var ext = Model.graphExtremes(pts)
         // A refusal is an answer. If every sample refused there is nothing to
         // plot, and the canvas says that rather than drawing an empty grid.
         if (!ext || !ext.min || !ext.max) {
-          ctx.fillStyle = Qt.alpha(root.telemetry, 0.85)
+          ctx.fillStyle = root.dim
           var refusedText = "every sample refused — nothing to plot"
           ctx.fillText(refusedText, (w - ctx.measureText(refusedText).width) / 2, h / 2)
           return
         }
-      
+
         var yMin = ext.min.y
         var yMax = ext.max.y
         if (!(yMax > yMin)) { yMax = yMin + 1; yMin = yMin - 1 }
         var xLo = pts[0].x
         var xHi = pts[pts.length - 1].x
-      
+
         var yTicks = Model.graphTicks(yMin, yMax, 6)
         var gutterL = 8
         for (var yl = 0; yl < yTicks.ticks.length; yl++) {
@@ -1246,37 +1172,34 @@ onPaint: {
             Model.graphTickLabel(yTicks.ticks[yl], yTicks.step)).width
           if (cand + 14 > gutterL) gutterL = cand + 14
         }
-        var top = 12
+        var top = 14
         var bottom = 26
         var plotW = Math.max(10, w - gutterL - 14)
         var plotH = Math.max(10, h - top - bottom)
-      
+
         function sx(xv) {
           return gutterL + (xHi === xLo ? 0 : ((xv - xLo) / (xHi - xLo)) * plotW)
         }
         function sy(v) {
           return top + plotH - ((v - yMin) / (yMax - yMin)) * plotH
         }
-      
-        ctx.fillStyle = "#0d0e11"
-        ctx.fillRect(gutterL, top, plotW, plotH)
-      
+
         // Refused spans are painted, never silently skipped.
         var runs = Model.graphRefusedRuns(pts)
-        ctx.fillStyle = Qt.alpha(root.reentry, 0.12)
+        ctx.fillStyle = Util.alpha(root.urgent, 0.14)
         for (var r = 0; r < runs.length; r++) {
           var bx0 = sx(runs[r].x0)
           var bx1 = sx(runs[r].x1)
           ctx.fillRect(bx0, top, Math.max(1, bx1 - bx0), plotH)
         }
-      
-        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.13)
+
+        ctx.strokeStyle = Util.alpha(root.foreground, 0.10)
         ctx.lineWidth = 1
-        ctx.fillStyle = Qt.alpha(root.telemetry, 0.62)
+        ctx.fillStyle = root.faint
         for (var t = 0; t < yTicks.ticks.length; t++) {
           var yv = yTicks.ticks[t]
           if (yv < yMin || yv > yMax) continue
-          var yy = sy(yv)
+          var yy = Math.round(sy(yv)) + 0.5
           ctx.beginPath()
           ctx.moveTo(gutterL, yy)
           ctx.lineTo(gutterL + plotW, yy)
@@ -1284,19 +1207,20 @@ onPaint: {
           var lbl = Model.graphTickLabel(yv, yTicks.step)
           ctx.fillText(lbl, gutterL - ctx.measureText(lbl).width - 6, yy + 3)
         }
-      
+
         if (yMin < 0 && yMax > 0) {
-          ctx.strokeStyle = Qt.alpha(root.telemetry, 0.34)
+          ctx.strokeStyle = Util.alpha(root.foreground, 0.30)
           ctx.beginPath()
           ctx.moveTo(gutterL, sy(0))
           ctx.lineTo(gutterL + plotW, sy(0))
           ctx.stroke()
         }
-      
+
         // The curve. A refused sample lifts the pen: the line is never drawn
         // across a gap the evaluator declined to answer.
-        ctx.strokeStyle = root.reentry
+        ctx.strokeStyle = root.accent
         ctx.lineWidth = 2
+        ctx.lineJoin = "round"
         ctx.beginPath()
         var drawing = false
         for (var i = 0; i < pts.length; i++) {
@@ -1306,808 +1230,197 @@ onPaint: {
           else ctx.lineTo(sx(pt.x), sy(pt.y))
         }
         ctx.stroke()
-      
-        ctx.fillStyle = Qt.alpha(root.telemetry, 0.62)
+
+        ctx.fillStyle = root.faint
         var loText = Model.graphNumberText(xLo)
         var hiText = Model.graphNumberText(xHi)
         ctx.fillText(loText, gutterL, top + plotH + 16)
         ctx.fillText(hiText, gutterL + plotW - ctx.measureText(hiText).width,
           top + plotH + 16)
-      
+
         if (graphCanvas.hovering && pts.length > 1) {
           var rel = Math.min(1, Math.max(0, (graphCanvas.hoverX - gutterL) / plotW))
           var idx = Math.round(rel * (pts.length - 1))
           var hp = pts[idx]
           var hx = sx(hp.x)
-          ctx.strokeStyle = Qt.alpha(root.frost, 0.35)
+          ctx.strokeStyle = Util.alpha(root.foreground, 0.35)
           ctx.lineWidth = 1
           ctx.beginPath()
           ctx.moveTo(hx, top)
           ctx.lineTo(hx, top + plotH)
           ctx.stroke()
           if (hp.y !== null && isFinite(hp.y)) {
-            ctx.fillStyle = root.frost
+            ctx.fillStyle = root.foreground
             ctx.beginPath()
             ctx.arc(hx, sy(hp.y), 3, 0, Math.PI * 2)
             ctx.fill()
           }
           var ht = Model.graphHoverText(hp, idx, pts.length)
-          ctx.fillStyle = root.frost
+          ctx.fillStyle = root.foreground
           var tw = ctx.measureText(ht).width
           var tx = Math.min(gutterL + plotW - tw, Math.max(gutterL, hx + 8))
-          ctx.fillText(ht, tx, top + 12)
+          ctx.fillText(ht, tx, top + 4)
         }
       }
     }
   }
 
-
-  // ------------------------------------------------------------ GRAPH section
+  // =========================================================== GRAPH deck
 
   component GraphSection: Item {
     id: graphSection
 
-    ColumnLayout {
+    RowLayout {
       anchors.fill: parent
-      spacing: Style.space(12)
+      spacing: Style.space(14)
 
-      RowLayout {
+      Card {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        spacing: Style.space(12)
-
-        // primary: live sweep
-        Rectangle {
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
-
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(10)
-
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "GRAPH DECK — LIVE SWEEP"
-              note: "graph pixels are visualization, never evidence"
-            }
-
-            RowLayout {
-              Layout.fillWidth: true
-              spacing: Style.space(10)
-              Pill {
-                label: jackal.graphBusy ? "SWEEPING…" : "SEALED EVALUATOR · f64"
-                tone: jackal.graphBusy ? root.reentry : root.signal
-              }
-              Text {
-                text: jackal.graphMeta
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                Layout.fillWidth: true
-                elide: Text.ElideRight
-              }
-            }
-
-            SweepPlot {
-              Layout.fillWidth: true
-              Layout.fillHeight: true
-            }
-
-            Text {
-              Layout.fillWidth: true
-              text: "Live sweep · status=estimated visualization. Exact rational x grid; "
-                    + "f64 samples from the runtime's own evaluator; a refused sample "
-                    + "breaks the curve; pixels are not proof."
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-              horizontalAlignment: Text.AlignHCenter
-            }
-
-            // sweep controls
-            RowLayout {
-              Layout.fillWidth: true
-              spacing: Style.space(8)
-
-              Text {
-                text: "f(x)"
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-              TextField {
-                id: exprField
-                Layout.fillWidth: true
-                text: jackal.graphExpression
-                placeholderText: "x^6-5*x^4+4*x^2"
-                onAccepted: jackal.plotGraph(exprField.text, loField.text, hiField.text)
-              }
-              Text {
-                text: "lo"
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-              TextField {
-                id: loField
-                Layout.preferredWidth: Style.space(90)
-                text: jackal.graphXMin
-                onAccepted: jackal.plotGraph(exprField.text, loField.text, hiField.text)
-              }
-              Text {
-                text: "hi"
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-              }
-              TextField {
-                id: hiField
-                Layout.preferredWidth: Style.space(90)
-                text: jackal.graphXMax
-                onAccepted: jackal.plotGraph(exprField.text, loField.text, hiField.text)
-              }
-              Rectangle {
-                implicitWidth: sweepText.implicitWidth + Style.space(22)
-                implicitHeight: sweepText.implicitHeight + Style.space(12)
-                radius: Style.space(3)
-                color: jackal.graphBusy
-                  ? Qt.alpha(root.telemetry, 0.10)
-                  : (sweepArea.containsMouse
-                     ? Qt.alpha(root.reentry, 0.22) : Qt.alpha(root.reentry, 0.12))
-                border.width: 1
-                border.color: Qt.alpha(root.reentry, 0.55)
-                Text {
-                  id: sweepText
-                  anchors.centerIn: parent
-                  text: jackal.graphBusy ? "SWEEPING…" : "▸ SWEEP"
-                  color: jackal.graphBusy ? root.faint : root.reentry
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  font.letterSpacing: 1.2
-                }
-                MouseArea {
-                  id: sweepArea
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  enabled: !jackal.graphBusy
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: jackal.plotGraph(exprField.text, loField.text, hiField.text)
-                }
-              }
-            }
-          }
-        }
-
-        // secondary: THOTH / HELLGATE reference render
-        Rectangle {
-          Layout.preferredWidth: Style.space(300)
-          Layout.fillHeight: true
-          color: root.panelSurface
-          radius: Style.space(5)
-          border.width: 1
-          border.color: root.hairline
-
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(14)
-            spacing: Style.space(10)
-
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "THOTH · HELLGATE"
-              note: "reference render"
-            }
-
-            Image {
-              Layout.fillWidth: true
-              Layout.preferredHeight: width * 0.62
-              source: Qt.resolvedUrl("assets/jackal-thoth-hellgate-graph.png")
-              fillMode: Image.PreserveAspectFit
-              smooth: true
-              asynchronous: true
-            }
-
-            Text {
-              Layout.fillWidth: true
-              text: "The HELLGATE lane returns bounded, not formal-bounded. "
-                + "This render is a picture of a result, not the result."
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-            }
-
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
-
-            Text {
-              Layout.fillWidth: true
-              text: "PRESETS"
-              color: root.telemetry
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.4
-            }
-
-            Repeater {
-              model: [
-                { label: "sextic well", expr: "x^6-5*x^4+4*x^2", lo: "-2.6", hi: "2.6" },
-                { label: "damped wave", expr: "sin(x)/x", lo: "-18", hi: "18" },
-                { label: "gaussian", expr: "exp(-x^2)", lo: "-3", hi: "3" },
-                { label: "tanh gate", expr: "tanh(x)", lo: "-4", hi: "4" }
-              ]
-              delegate: Rectangle {
-                id: presetRow
-                required property var modelData
-                Layout.fillWidth: true
-                implicitHeight: presetText.implicitHeight + 2 * Style.space(10)
-                radius: Style.space(3)
-                color: presetArea.containsMouse
-                  ? Qt.alpha(root.frost, 0.06) : "transparent"
-                border.width: 1
-                border.color: root.hairline
-                Text {
-                  id: presetText
-                  anchors.fill: parent
-                  anchors.margins: Style.space(10)
-                  text: presetRow.modelData.label + "  ·  " + presetRow.modelData.expr
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  elide: Text.ElideRight
-                }
-                MouseArea {
-                  id: presetArea
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    exprField.text = presetRow.modelData.expr
-                    loField.text = presetRow.modelData.lo
-                    hiField.text = presetRow.modelData.hi
-                    jackal.plotGraph(presetRow.modelData.expr,
-                      presetRow.modelData.lo, presetRow.modelData.hi)
-                  }
-                }
-              }
-            }
-
-            Item { Layout.fillHeight: true }
-          }
-        }
-      }
-    }
-  }
-
-  // ----------------------------------------------------------- PROBES section
-
-  component ProbesSection: Item {
-    Rectangle {
-      anchors.fill: parent
-      color: root.panelSurface
-      radius: Style.space(5)
-      border.width: 1
-      border.color: root.hairline
-
-      ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Style.space(16)
-        spacing: Style.space(12)
-
-        DeckTitle {
-          Layout.fillWidth: true
-          title: "SESSION FUNCTION — LIVE PROBES"
-          note: "established only by tools executed in this shell session"
-        }
-
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(12)
-          Stat {
-            label: "PROBES PASSED"
-            value: jackal.probePassed + " / " + jackal.probeTotal
-            tone: jackal.probeTotal > 0 && jackal.probePassed === jackal.probeTotal
-              ? root.signal : root.reentry
-          }
-          Stat {
-            label: "DOCTOR VERDICT"
-            value: jackal.verdict !== "" ? jackal.verdict : "—"
-            tone: root.stateColor
-          }
-          Stat {
-            label: "Z3"
-            value: jackal.z3Present ? "present" : "absent"
-            tone: jackal.z3Present ? root.signal : root.dim
-          }
-          Stat {
-            label: "ANUBIS COMPILER"
-            value: jackal.anubisPresent ? "present" : "absent"
-            tone: jackal.anubisPresent ? root.signal : root.dim
-          }
-        }
-
-        ScrollView {
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          clip: true
-          ColumnLayout {
-            width: parent.width
-            spacing: Style.space(4)
-            Repeater {
-              model: jackal.probeRows
-              delegate: Rectangle {
-                id: probeRow
-                required property var modelData
-                Layout.fillWidth: true
-                implicitHeight: probeLine.implicitHeight + 2 * Style.space(11)
-                radius: Style.space(3)
-                color: root.panelRaised
-                border.width: 1
-                border.color: root.hairline
-                RowLayout {
-                  id: probeLine
-                  anchors.fill: parent
-                  anchors.margins: Style.space(11)
-                  spacing: Style.space(10)
-                  Text {
-                    text: probeRow.modelData.pass ? "●" : "○"
-                    color: probeRow.modelData.pass ? root.signal : root.reentry
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                  }
-                  Text {
-                    text: String(probeRow.modelData.name || "")
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                  }
-                  Text {
-                    // executed vs expected, kept apart: the pair is the whole
-                    // claim, and collapsing it would hide which side drifted.
-                    text: String(probeRow.modelData.executed || "—")
-                      + "  /  " + String(probeRow.modelData.expected || "—")
-                    color: root.faint
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    elide: Text.ElideRight
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ----------------------------------------------------------- LEDGER section
-
-  component LedgerSection: Item {
-    Rectangle {
-      anchors.fill: parent
-      color: root.panelSurface
-      radius: Style.space(5)
-      border.width: 1
-      border.color: root.hairline
-
-      ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Style.space(16)
-        spacing: Style.space(12)
-
-        DeckTitle {
-          Layout.fillWidth: true
-          title: "LATEST RESULTS — LOCAL RECALL"
-          note: "recall, not evidence — a file this tooling wrote"
-        }
-
-        Text {
-          Layout.fillWidth: true
-          text: "The ledger answers \"did this session actually call JACKAL?\" "
-            + "It is never a source. A retained receipt is re-verified through "
-            + "the real front door in VERIFY."
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
-
-        LatestAnswerCard {
-          Layout.fillWidth: true
-          row: jackal.results.length > 0 ? jackal.results[0] : null
-        }
-
-        // Flickable + plain Column rather than a nested Layout. A Column takes
-        // its height FROM its children; a Layout negotiates height WITH them,
-        // and when the parent is sized from the layout the negotiation has no
-        // slack and wrapped text gets compressed onto the row above it.
-        Flickable {
-          id: ledgerFlick
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          contentWidth: width
-          contentHeight: ledgerColumn.height
-          clip: true
-          pixelAligned: true
-          interactive: contentHeight > height
-          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-          Rectangle {
-            id: readingPlaneBackground
-            width: ledgerFlick.width
-            height: ledgerColumn.height
-            color: root.panelVoid
-            z: -1
-          }
-
-          Column {
-            id: ledgerColumn
-            width: ledgerFlick.width
-            spacing: Style.space(6)
-            // Render the complete reading surface as one opaque device-pixel
-            // layer. Text no longer re-composites independently against moving
-            // translucent decoration while the viewport scrolls.
-            layer.enabled: true
-            layer.smooth: false
-            layer.mipmap: false
-
-            Text {
-              visible: jackal.results.length === 0
-              text: "no recorded results yet"
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-
-            Repeater {
-              model: jackal.results
-              delegate: Rectangle {
-                id: resRow
-                required property var modelData
-                readonly property var row: resRow.modelData
-                width: ledgerColumn.width
-                height: resCol.height + 2 * Style.space(12)
-                radius: Style.space(4)
-                color: root.panelRaised
-                border.width: 1
-                border.color: root.hairline
-
-                Column {
-                  id: resCol
-                  x: Style.space(12)
-                  y: Style.space(12)
-                  width: resRow.width - 2 * Style.space(12)
-                  spacing: Style.space(5)
-
-                  Row {
-                    spacing: Style.space(10)
-
-                    Pill {
-                      label: String(resRow.row.status || "—")
-                      tone: String(resRow.row.status || "") === "refused"
-                        ? root.reentry : root.telemetry
-                    }
-                    Text {
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: String(resRow.row.tool || "")
-                      color: root.signal
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                      font.bold: true
-                    }
-                    Text {
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: Model.ageText(resRow.row.atMs, jackal.nowMs)
-                      color: root.faint
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
-                    // A digest names a receipt that can be re-verified through
-                    // a front door. Without retention it names evidence that no
-                    // longer exists, so the two are shown separately.
-                    Pill {
-                      visible: resRow.row.digest !== ""
-                      label: resRow.row.retained ? "RECEIPT RETAINED" : "RECEIPT GONE"
-                      tone: resRow.row.retained ? root.telemetry : root.reentry
-                    }
-                  }
-
-                  // resultRow() already resolved refusal-vs-answer. Rendering
-                  // the refusal lane unconditionally would paint every ordinary
-                  // answer in refusal crimson — the exact promotion JOP-UI-001
-                  // forbids — because that helper always returns a string.
-                  Text {
-                    width: parent.width
-                    visible: String(resRow.row.request || "") !== ""
-                    height: visible ? implicitHeight : 0
-                    text: String(resRow.row.request || "")
-                    color: root.faint
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    elide: Text.ElideRight
-                  }
-                  Text {
-                    width: parent.width
-                    text: String(resRow.row.detail || "")
-                    color: resRow.row.refused ? root.reentry : root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    wrapMode: Text.WordWrap
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ----------------------------------------------------------- VERIFY section
-
-  component VerifySection: Item {
-    Rectangle {
-      anchors.fill: parent
-      color: root.panelSurface
-      radius: Style.space(5)
-      border.width: 1
-      border.color: Qt.alpha(root.reentry, 0.28)
-
-      ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Style.space(16)
-        spacing: Style.space(12)
-
-        DeckTitle {
-          Layout.fillWidth: true
-          title: "VERIFY — CLIPBOARD ARTIFACT"
-          note: "the one section that acts"
-        }
-
-        Text {
-          Layout.fillWidth: true
-          text: "Expectations come from the operator's file, "
-            + "never from the artifact under review. "
-            + "If verification refuses because the expectations do not "
-            + "authorize that request, that is correct — widening the "
-            + "authorization is a deliberate operator edit, never something "
-            + "done to make a check pass."
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
+        title: "Graph deck — live sweep"
+        note: "graph pixels are visualization, never evidence"
 
         RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(10)
-
-          Rectangle {
-            implicitWidth: verifyText.implicitWidth + Style.space(26)
-            implicitHeight: verifyText.implicitHeight + Style.space(14)
-            radius: Style.space(3)
-            color: jackal.verifyBusy
-              ? Qt.alpha(root.telemetry, 0.10)
-              : (verifyArea.containsMouse
-                 ? Qt.alpha(root.reentry, 0.22) : Qt.alpha(root.reentry, 0.12))
-            border.width: 1
-            border.color: Qt.alpha(root.reentry, 0.55)
-            Text {
-              id: verifyText
-              anchors.centerIn: parent
-              text: jackal.verifyBusy ? "VERIFYING…" : "▸ VERIFY CLIPBOARD ARTIFACT"
-              color: jackal.verifyBusy ? root.faint : root.reentry
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.2
-            }
-            MouseArea {
-              id: verifyArea
-              anchors.fill: parent
-              hoverEnabled: true
-              enabled: !jackal.verifyBusy
-              cursorShape: Qt.PointingHandCursor
-              onClicked: jackal.verifyArtifact()
-            }
+          JkChip {
+            label: jackal.graphBusy ? "SWEEPING…" : "SEALED EVALUATOR · f64"
+            tone: root.foreground
+            dot: jackal.graphBusy
+            fontFamily: root.fontFamily
           }
-
-          Item { Layout.fillWidth: true }
-
-          Pill {
-            label: "RUNTIME " + (jackal.runtimePath !== "" ? "BOUND" : "UNBOUND")
-            tone: jackal.runtimePath !== "" ? root.signal : root.dim
+          JkChip {
+            label: "status=estimated visualization"
+            tone: root.dim
+            fontFamily: root.fontFamily
+          }
+          Caption {
+            Layout.fillWidth: true
+            text: jackal.graphMeta
+            elide: Text.ElideRight
+            wrapMode: Text.NoWrap
           }
         }
 
-        KeyValue {
-          Layout.fillWidth: true
-          label: "AUTHORIZED BY YOU"
-          value: jackal.expectationsPath !== "" ? jackal.expectationsPath : "—"
-        }
-        KeyValue {
-          Layout.fillWidth: true
-          label: "RUNTIME VERIFY"
-          value: jackal.verifyText !== "" ? jackal.verifyText : "—"
-          tone: root.stateColor
-        }
-        KeyValue {
-          Layout.fillWidth: true
-          label: "RUNTIME PATH"
-          value: jackal.runtimePath !== "" ? jackal.runtimePath : "—"
-        }
-
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
-
-        ScrollView {
+        SweepPlot {
           Layout.fillWidth: true
           Layout.fillHeight: true
-          clip: true
-          ColumnLayout {
-            width: parent.width
-            spacing: Style.space(6)
+        }
 
-            Text {
-              visible: !jackal.verifyResult
-              text: jackal.actionStatus !== ""
-                ? jackal.actionStatus
-                : "no artifact routed yet — copy a receipt or bundle, then VERIFY"
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              Layout.fillWidth: true
-              wrapMode: Text.WordWrap
-            }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
 
-            Text {
-              visible: !!jackal.verifyResult
-              text: Model.verifyStatusLabel(
-                jackal.verifyResult ? jackal.verifyResult.status : "")
-              color: jackal.verifyResult
-                && Model.verifyIsAlarming(jackal.verifyResult)
-                ? root.reentry : root.signal
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              font.bold: true
-            }
-            Text {
-              visible: !!jackal.verifyResult
-              Layout.fillWidth: true
-              text: Model.verifySubject(jackal.verifyResult)
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-            }
-            Text {
-              visible: !!jackal.verifyResult
-                && Model.verifyRaisedByText(jackal.verifyResult) !== ""
-              Layout.fillWidth: true
-              text: Model.verifyRaisedByText(jackal.verifyResult)
-              color: root.reentry
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-            }
+          Caption { text: "f(x)" }
+          TextField {
+            id: exprField
+            Layout.fillWidth: true
+            text: jackal.graphExpression
+            placeholderText: "x^6-5*x^4+4*x^2"
+            foreground: root.foreground
+            accent: root.accent
+            font.family: root.fontFamily
+            onAccepted: jackal.plotGraph(exprField.text, loField.text, hiField.text)
           }
+          Caption { text: "lo" }
+          TextField {
+            id: loField
+            Layout.preferredWidth: Style.space(96)
+            text: jackal.graphXMin
+            foreground: root.foreground
+            accent: root.accent
+            font.family: root.fontFamily
+            onAccepted: jackal.plotGraph(exprField.text, loField.text, hiField.text)
+          }
+          Caption { text: "hi" }
+          TextField {
+            id: hiField
+            Layout.preferredWidth: Style.space(96)
+            text: jackal.graphXMax
+            foreground: root.foreground
+            accent: root.accent
+            font.family: root.fontFamily
+            onAccepted: jackal.plotGraph(exprField.text, loField.text, hiField.text)
+          }
+          Button {
+            text: jackal.graphBusy ? "Sweeping…" : "Sweep"
+            iconText: "󰐊"
+            enabled: !jackal.graphBusy
+            bordered: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            iconSize: Style.font.body
+            onClicked: jackal.plotGraph(exprField.text, loField.text, hiField.text)
+          }
+        }
+
+        Caption {
+          Layout.fillWidth: true
+          text: "Exact rational x grid · f64 samples from the runtime's own evaluator · "
+            + "a refused sample breaks the curve · pixels are not proof of continuity, "
+            + "roots, extrema, or anything between samples."
         }
       }
-    }
-  }
 
-  // ------------------------------------------------------------ THOTH section
+      Card {
+        Layout.preferredWidth: Style.space(300)
+        Layout.fillHeight: true
+        title: "Presets"
 
-  component ThothSection: Item {
-    Rectangle {
-      anchors.fill: parent
-      color: root.panelSurface
-      radius: Style.space(5)
-      border.width: 1
-      border.color: root.hairline
-
-      ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Style.space(16)
-        spacing: Style.space(12)
-
-        DeckTitle {
-          Layout.fillWidth: true
-          title: "INTEGRATED THOTH — SEALED RUNTIME"
-          note: "one engine, one identity"
-        }
-
-        Text {
-          Layout.fillWidth: true
-          text: "THOTH lives inside JACKAL as its identity-pinned "
-            + "measurement/provenance subsystem — not a separate service. "
-            + "Exact-given remains conditional on its given datum."
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
-
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(12)
-          Stat {
-            label: "RUNTIME EPOCH"
-            value: jackal.epoch !== "" ? jackal.epoch : "—"
-            tone: root.telemetry
-          }
-          Stat {
-            label: "IDENTITY"
-            value: jackal.identityMatch ? "match" : "unproven"
-            tone: jackal.identityMatch ? root.signal : root.reentry
-          }
-          Stat {
-            label: "DECLARED TOOLS"
-            value: String(jackal.declaredToolCount)
-            tone: root.signal
-          }
-          Stat {
-            label: "UNIFIED SURFACE"
-            value: "74 tools"
-            tone: root.reentry
-          }
-        }
-
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(12)
-          Stat {
-            label: "STEM WORKFLOWS"
-            value: "7 linked engineering tools"
-            tone: root.telemetry
-          }
-          Stat {
-            label: "NUMBER THEORY"
-            value: "10 certified Diophantine tools"
-            tone: root.signal
-          }
-          Stat {
-            label: "ENGINEERING"
-            value: "6 certified STEM models"
-            tone: root.signal
+        Repeater {
+          model: [
+            { label: "sextic well", expr: "x^6-5*x^4+4*x^2", lo: "-2.6", hi: "2.6" },
+            { label: "damped wave", expr: "sin(x)/x", lo: "-18", hi: "18" },
+            { label: "gaussian", expr: "exp(-x^2)", lo: "-3", hi: "3" },
+            { label: "tanh gate", expr: "tanh(x)", lo: "-4", hi: "4" },
+            { label: "log edge", expr: "ln(x)", lo: "-1", hi: "6" },
+            { label: "pole", expr: "1/(x-1)", lo: "-2", hi: "4" }
+          ]
+          delegate: Button {
+            required property var modelData
+            Layout.fillWidth: true
+            text: modelData.label + "   " + modelData.expr
+            leftAlign: true
+            selected: jackal.graphExpression === modelData.expr
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            horizontalPadding: Style.space(10)
+            verticalPadding: Style.space(7)
+            onClicked: {
+              exprField.text = modelData.expr
+              loField.text = modelData.lo
+              hiField.text = modelData.hi
+              jackal.plotGraph(modelData.expr, modelData.lo, modelData.hi)
+            }
           }
         }
 
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
 
-        KeyValue {
+        JkSectionTitle {
           Layout.fillWidth: true
-          label: "PACKAGE SHA"
-          value: jackal.packageSha !== "" ? jackal.packageSha : "—"
+          title: "THOTH · HELLGATE"
+          note: "reference render"
+          foreground: root.foreground
+          fontFamily: root.fontFamily
         }
-        KeyValue {
+
+        Image {
           Layout.fillWidth: true
-          label: "CATALOG SHA"
-          value: jackal.catalogSha !== "" ? jackal.catalogSha : "—"
+          Layout.preferredHeight: width * 0.6
+          source: Qt.resolvedUrl("assets/jackal-thoth-hellgate-graph.png")
+          fillMode: Image.PreserveAspectFit
+          smooth: true
+          asynchronous: true
+          opacity: 0.88
         }
-        KeyValue {
+
+        Caption {
           Layout.fillWidth: true
-          label: "DOCTOR RUNTIME"
-          value: jackal.doctorRuntimePath !== "" ? jackal.doctorRuntimePath : "—"
-        }
-        KeyValue {
-          Layout.fillWidth: true
-          label: "HOST"
-          value: jackal.hostText !== "" ? jackal.hostText : "—"
-        }
-        KeyValue {
-          Layout.fillWidth: true
-          label: "EVERY TOOL DECLARES REFUSED"
-          value: jackal.everyToolDeclaresRefused ? "yes" : "no"
-          tone: jackal.everyToolDeclaresRefused ? root.signal : root.reentry
+          text: "The HELLGATE lane returns bounded, not formal-bounded. "
+            + "This render is a picture of a result, not the result."
         }
 
         Item { Layout.fillHeight: true }
@@ -2115,146 +1428,719 @@ onPaint: {
     }
   }
 
-  // --------------------------------------------------------- REGISTER section
+  // ========================================================== PROBES deck
 
-  component RegisterSection: Item {
-    Rectangle {
+  component ProbesSection: Item {
+    Card {
       anchors.fill: parent
-      color: root.panelSurface
-      radius: Style.space(5)
-      border.width: 1
-      border.color: root.hairline
+      title: "Session function — live probes"
+      note: "established only by tools executed in this shell session"
 
-      ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Style.space(16)
-        spacing: Style.space(12)
-
-        DeckTitle {
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+        JkStat {
           Layout.fillWidth: true
-          title: "EVIDENCE REGISTER — CAPABILITY"
-          note: "both axes, never merged into a score"
+          label: "Doctor verdict"
+          value: jackal.busy ? "PROBING…" : (jackal.verdict !== "" ? jackal.verdict : "—")
+          sub: "probed " + root.ageText
+          tone: root.stateColor
+          foreground: root.foreground; fontFamily: root.fontFamily
         }
-
-        RowLayout {
+        JkStat {
           Layout.fillWidth: true
-          spacing: Style.space(10)
-          Text {
-            text: "FAMILY"
-            color: root.faint
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            Layout.preferredWidth: Style.space(190)
-          }
-          Text {
-            text: "ASSURANCE"
-            color: root.faint
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            Layout.fillWidth: true
-          }
-          Text {
-            text: "CONSEQUENCE"
-            color: root.faint
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            Layout.fillWidth: true
-          }
+          label: "Classes at class"
+          value: jackal.probeTotal > 0 ? jackal.probePassed + " / " + jackal.probeTotal : "—"
+          sub: "one real tool per declared class"
+          tone: jackal.probeTotal > 0 && jackal.probePassed === jackal.probeTotal ? root.foreground : root.urgent
+          foreground: root.foreground; fontFamily: root.fontFamily
         }
-
-        ScrollView {
+        JkStat {
           Layout.fillWidth: true
-          Layout.fillHeight: true
-          clip: true
-          ColumnLayout {
-            width: parent.width
-            spacing: Style.space(4)
+          label: "Z3"
+          value: jackal.report ? (jackal.z3Present ? "present" : "absent") : "—"
+          sub: "program-verifier dependency"
+          tone: jackal.z3Present ? root.foreground : root.dim
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+        JkStat {
+          Layout.fillWidth: true
+          label: "Anubis compiler"
+          value: jackal.report ? (jackal.anubisPresent ? "present" : "absent") : "—"
+          sub: "check-program dependency"
+          tone: jackal.anubisPresent ? root.foreground : root.dim
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+        Button {
+          text: jackal.busy ? "Probing…" : "Probe now"
+          iconText: Model.GLYPH.refresh
+          iconSpinning: jackal.busy
+          enabled: !jackal.busy
+          bordered: true
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          fontSize: Style.font.bodySmall
+          iconSize: Style.font.body
+          Layout.alignment: Qt.AlignVCenter
+          onClicked: jackal.refresh()
+        }
+      }
 
-            Text {
-              visible: jackal.familyRows.length === 0
-              text: "capability inventory not loaded"
-              color: root.faint
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+        ColumnHead { Layout.preferredWidth: Style.space(160); text: "CLASS" }
+        ColumnHead { Layout.fillWidth: true; text: "TOOL EXECUTED" }
+        ColumnHead { Layout.preferredWidth: Style.space(170); text: "EXECUTED" }
+        ColumnHead { Layout.preferredWidth: Style.space(170); text: "DECLARED" }
+        ColumnHead { Layout.preferredWidth: Style.space(40); text: "" }
+      }
 
-            Repeater {
-              model: jackal.familyRows
-              delegate: Rectangle {
-                id: famRow
-                required property var modelData
-                Layout.fillWidth: true
-                implicitHeight: famLine.implicitHeight + 2 * Style.space(12)
-                radius: Style.space(3)
-                color: root.panelRaised
-                border.width: 1
-                border.color: root.hairline
-                RowLayout {
-                  id: famLine
-                  anchors.fill: parent
-                  anchors.margins: Style.space(12)
-                  spacing: Style.space(10)
-                  Text {
-                    text: String(famRow.modelData.family || "")
-                    color: root.signal
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                    Layout.preferredWidth: Style.space(178)
-                    elide: Text.ElideRight
-                  }
-                  Text {
-                    text: String(famRow.modelData.assurance || "—")
-                    color: root.telemetry
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                  }
-                  Text {
-                    text: String(famRow.modelData.consequence || "—")
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                  }
-                }
-              }
-            }
+      Flickable {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        contentWidth: width
+        contentHeight: probeColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
 
-            Item { implicitHeight: Style.space(10) }
+        Column {
+          id: probeColumn
+          width: parent.width
+          spacing: Style.space(3)
 
-            DeckTitle {
-              Layout.fillWidth: true
-              title: "AGENT SURFACE"
-              note: "which tools a profile exposes — the operator's lever"
-            }
+          Caption {
+            visible: jackal.probeRows.length === 0
+            text: jackal.busy ? "probing…" : "nothing established yet — probe to execute one tool per declared class"
+          }
 
-            Repeater {
-              model: jackal.profileRows
-              delegate: RowLayout {
-                id: profRow
-                required property var modelData
-                Layout.fillWidth: true
+          Repeater {
+            model: jackal.probeRows
+            delegate: CursorSurface {
+              required property var modelData
+              width: probeColumn.width
+              implicitHeight: probeLine.implicitHeight + Style.space(14)
+              foreground: root.foreground
+              bordered: true
+              RowLayout {
+                id: probeLine
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
                 spacing: Style.space(10)
                 Text {
-                  text: String(profRow.modelData.name || "")
-                  color: root.dim
+                  textFormat: Text.PlainText
+                  Layout.preferredWidth: Style.space(150)
+                  text: modelData.name
+                  color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  Layout.preferredWidth: Style.space(178)
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: true
                   elide: Text.ElideRight
                 }
                 Text {
-                  text: String(profRow.modelData.detail || "")
+                  textFormat: Text.PlainText
+                  Layout.fillWidth: true
+                  text: modelData.tool
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  elide: Text.ElideRight
+                }
+                JkChip {
+                  Layout.preferredWidth: Style.space(160)
+                  label: modelData.executed !== "" ? modelData.executed : "—"
+                  tone: modelData.pass ? root.foreground : root.urgent
+                  fontFamily: root.fontFamily
+                }
+                JkChip {
+                  Layout.preferredWidth: Style.space(160)
+                  label: modelData.expected !== "" ? modelData.expected : "—"
+                  tone: root.dim
+                  fontFamily: root.fontFamily
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  Layout.preferredWidth: Style.space(30)
+                  horizontalAlignment: Text.AlignHCenter
+                  text: modelData.pass ? Model.GLYPH.pass : Model.GLYPH.fail
+                  color: modelData.pass ? root.foreground : root.urgent
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.title
+                }
+              }
+            }
+          }
+        }
+      }
+
+      Column {
+        Layout.fillWidth: true
+        spacing: Style.space(3)
+        Repeater {
+          model: jackal.report && Array.isArray(jackal.report.non_claims) ? jackal.report.non_claims : []
+          delegate: Caption {
+            required property var modelData
+            width: parent.width
+            text: "non-claim · " + modelData
+          }
+        }
+      }
+    }
+  }
+
+  // ========================================================== VERIFY deck
+
+  component VerifySection: Item {
+    Card {
+      anchors.fill: parent
+      title: "Verify — clipboard artifact"
+      note: "the one section that acts"
+      urgentEdge: !!jackal.verifyResult && Model.verifyIsAlarming(jackal.verifyResult)
+
+      Body {
+        Layout.fillWidth: true
+        text: "Copy a JACKAL receipt or claim bundle, then verify. Expectations come from "
+          + "the operator's file, never from the artifact under review. If verification "
+          + "refuses because the expectations do not authorize that request, that is correct — "
+          + "widening the authorization is a deliberate operator edit, never something done "
+          + "to make a check pass."
+      }
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+
+        Button {
+          text: jackal.verifyBusy ? "Verifying…" : "Verify clipboard artifact"
+          iconText: Model.GLYPH.verified
+          enabled: !jackal.verifyBusy
+          bordered: true
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          fontSize: Style.font.body
+          iconSize: Style.font.title
+          horizontalPadding: Style.space(14)
+          verticalPadding: Style.space(9)
+          onClicked: jackal.verifyArtifact()
+        }
+        Button {
+          text: "Runtime verify"
+          iconText: "󰑐"
+          tooltipText: "Run the core provisioner's pinned tree check"
+          enabled: !jackal.busy
+          bordered: true
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          fontSize: Style.font.bodySmall
+          iconSize: Style.font.body
+          onClicked: jackal.runVerify()
+        }
+        Item { Layout.fillWidth: true }
+        JkChip {
+          label: "RUNTIME " + (jackal.runtimeDir !== "" ? "BOUND" : "UNBOUND")
+          tone: jackal.runtimeDir !== "" ? root.foreground : root.dim
+          fontFamily: root.fontFamily
+        }
+        JkChip {
+          visible: jackal.verifyText !== ""
+          label: "TREE " + jackal.verifyText
+          tone: jackal.verifyText === "PASS" ? root.foreground : root.urgent
+          fontFamily: root.fontFamily
+        }
+      }
+
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Authorized by you"
+        value: jackal.expectationsPath
+        copyable: true
+        foreground: root.foreground; fontFamily: root.fontFamily
+        onCopyRequested: function(t) { jackal.copyText(t, "expectations path") }
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Runtime"
+        value: jackal.runtimeDir !== "" ? jackal.runtimeDir : "—"
+        foreground: root.foreground; fontFamily: root.fontFamily
+      }
+
+      Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
+
+      RowLayout {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        spacing: Style.space(14)
+
+      Flickable {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.preferredWidth: 60
+        contentWidth: width
+        contentHeight: verdictColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        Column {
+          id: verdictColumn
+          width: parent.width
+          spacing: Style.space(8)
+
+          Caption {
+            visible: !jackal.verifyResult
+            width: parent.width
+            text: jackal.actionStatus !== ""
+              ? jackal.actionStatus
+              : "no artifact routed yet — copy a receipt or bundle, then verify"
+          }
+
+          Text {
+            visible: !!jackal.verifyResult
+            textFormat: Text.PlainText
+            text: Model.verifyStatusLabel(jackal.verifyResult ? jackal.verifyResult.status : "")
+            color: jackal.verifyResult && Model.verifyIsAlarming(jackal.verifyResult)
+              ? root.urgent
+              : (jackal.verifyResult && Model.verifyIsAffirmative(jackal.verifyResult) ? root.foreground : root.dim)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.displayLarge
+            font.bold: true
+            font.letterSpacing: 2
+          }
+          Body {
+            visible: !!jackal.verifyResult
+            width: parent.width
+            text: Model.verifySubject(jackal.verifyResult)
+          }
+          Body {
+            visible: !!jackal.verifyResult && Model.verifyIsRefusal(jackal.verifyResult)
+            width: parent.width
+            text: Model.verifyRaisedByText(jackal.verifyResult)
+              + (jackal.verifyResult && jackal.verifyResult.reason ? " · " + jackal.verifyResult.reason : "")
+              + (jackal.verifyResult && jackal.verifyResult.detail ? " — " + jackal.verifyResult.detail : "")
+            color: Model.verifyIsAlarming(jackal.verifyResult) ? root.urgent : root.dim
+          }
+
+          JkSectionTitle {
+            visible: !!jackal.verifyResult && Model.authorizedRows(jackal.verifyResult).length > 0
+            width: parent.width
+            title: "Authorized expectations"
+            note: "from the operator's file"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+          Repeater {
+            model: Model.authorizedRows(jackal.verifyResult)
+            delegate: JkKeyValue {
+              required property var modelData
+              width: parent.width
+              label: modelData.name
+              value: modelData.value
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              wrap: true
+            }
+          }
+        }
+      }
+
+      // The receipts the wrapper has retained on disk. Each one can go back
+      // through the same front door, against the same operator-owned
+      // authorization; a refusal there is the correct answer, not a fault.
+      Card {
+        Layout.fillHeight: true
+        Layout.preferredWidth: 40
+        Layout.fillWidth: true
+        title: "Retained receipts"
+        note: (jackal.receiptCount >= 0 ? jackal.receiptCount : "—") + " on disk · newest first"
+
+        Caption {
+          visible: jackal.receiptDigests.length === 0
+          Layout.fillWidth: true
+          text: "no receipts retained yet — a formal lane writes one here"
+        }
+
+        ListView {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          model: jackal.receiptDigests
+          clip: true
+          spacing: Style.space(2)
+          boundsBehavior: Flickable.StopAtBounds
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+          delegate: CursorSurface {
+            id: receiptRow
+            required property var modelData
+            required property int index
+            readonly property bool current: !!jackal.verifyResult
+              && String(jackal.verifyResult.artifact_sha256 || "").indexOf(modelData) === 0
+            width: ListView.view.width - Style.space(10)
+            implicitHeight: receiptLine.implicitHeight + Style.space(12)
+            foreground: root.foreground
+            hasCursor: receiptMouse.containsMouse
+
+            RowLayout {
+              id: receiptLine
+              anchors.fill: parent
+              anchors.leftMargin: Style.space(10)
+              anchors.rightMargin: Style.space(6)
+              spacing: Style.space(10)
+              Text {
+                textFormat: Text.PlainText
+                text: Model.GLYPH.verified
+                color: receiptRow.current ? root.foreground : root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+              }
+              Text {
+                textFormat: Text.PlainText
+                Layout.fillWidth: true
+                text: Model.shortHash(receiptRow.modelData)
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                elide: Text.ElideMiddle
+              }
+              Button {
+                text: jackal.verifyBusy ? "…" : "Re-verify"
+                enabled: !jackal.verifyBusy
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                horizontalPadding: Style.space(8)
+                verticalPadding: Style.space(3)
+                onClicked: jackal.verifyReceiptDigest(receiptRow.modelData)
+              }
+            }
+
+            MouseArea {
+              id: receiptMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              acceptedButtons: Qt.NoButton
+              z: -1
+            }
+          }
+        }
+      }
+      }
+    }
+  }
+
+  // ======================================================== REGISTER deck
+
+  component RegisterSection: Item {
+    Card {
+      anchors.fill: parent
+      title: "Evidence register — capability"
+      note: "both axes, never merged into a score · " + (jackal.declaredToolCount > 0 ? jackal.declaredToolCount + " declared tools" : "inventory not loaded")
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+        ColumnHead { Layout.preferredWidth: Style.space(170); text: "FAMILY" }
+        ColumnHead { Layout.preferredWidth: Style.space(300); text: "ASSURANCE" }
+        ColumnHead { Layout.preferredWidth: Style.space(190); text: "CONSEQUENCE CEILING" }
+        ColumnHead { Layout.preferredWidth: Style.space(50); text: "TOOLS" }
+        ColumnHead { Layout.fillWidth: true; text: "WHAT STANDS BEHIND AN ANSWER" }
+      }
+
+      Flickable {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        contentWidth: width
+        contentHeight: registerColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        Column {
+          id: registerColumn
+          width: parent.width - Style.space(10)
+          spacing: Style.space(3)
+
+          Caption {
+            visible: jackal.familyRows.length === 0
+            text: "capability inventory not loaded"
+          }
+
+          Repeater {
+            model: jackal.familyRows
+            delegate: CursorSurface {
+              required property var modelData
+              width: registerColumn.width
+              implicitHeight: famLine.implicitHeight + Style.space(14)
+              foreground: root.foreground
+              bordered: true
+              RowLayout {
+                id: famLine
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
+                spacing: Style.space(10)
+                Text {
+                  textFormat: Text.PlainText
+                  Layout.preferredWidth: Style.space(160)
+                  text: modelData.family
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: true
+                  elide: Text.ElideRight
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  Layout.preferredWidth: Style.space(290)
+                  text: modelData.assurance
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  elide: Text.ElideRight
+                }
+                Row {
+                  Layout.preferredWidth: Style.space(180)
+                  spacing: Style.space(6)
+                  Text {
+                    textFormat: Text.PlainText
+                    text: modelData.consequence
+                    color: modelData.consequenceDeclared ? root.dim : root.faint
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, Style.space(150))
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                  Text {
+                    // arrow-to-line: a consequence held at its ceiling, strictly
+                    // below the assurance. The anti-laundering boundary, marked.
+                    visible: modelData.capped
+                    textFormat: Text.PlainText
+                    text: Model.GLYPH.capped
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  Layout.preferredWidth: Style.space(40)
+                  text: String(modelData.toolCount)
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  Layout.fillWidth: true
+                  text: modelData.backing !== "" ? modelData.backing : "—"
                   color: root.faint
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
-                  Layout.fillWidth: true
                   elide: Text.ElideRight
                 }
               }
+            }
+          }
+
+          Item { width: 1; height: Style.space(10) }
+
+          JkSectionTitle {
+            width: parent.width
+            title: "Agent surface"
+            note: "which tools a profile exposes — the operator's lever"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Repeater {
+            model: jackal.profileRows
+            delegate: RowLayout {
+              required property var modelData
+              width: registerColumn.width
+              spacing: Style.space(10)
+              JkChip {
+                Layout.preferredWidth: Style.space(100)
+                label: modelData.name.toUpperCase() + "  " + modelData.count
+                tone: root.foreground
+                fontFamily: root.fontFamily
+              }
+              Body {
+                Layout.fillWidth: true
+                text: modelData.meaning
+              }
+            }
+          }
+
+          Caption {
+            visible: !jackal.everyToolDeclaresRefused && jackal.inventory !== null
+            width: parent.width
+            color: root.urgent
+            text: "Tools that do not declare `refused`: " + jackal.toolsWithoutRefused.join(", ")
+          }
+        }
+      }
+    }
+  }
+
+  // =========================================================== THOTH deck
+
+  component ThothSection: Item {
+    Card {
+      anchors.fill: parent
+      title: "Integrated THOTH — sealed runtime"
+      note: "one engine, one identity"
+
+      Body {
+        Layout.fillWidth: true
+        text: "THOTH lives inside JACKAL as its identity-pinned measurement/provenance "
+          + "subsystem — not a separate service. Exact-given remains conditional on its "
+          + "given datum. Everything on this deck was read from the runtime the doctor "
+          + "probe named, or from the ledger; nothing is typed in."
+      }
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+        JkStat {
+          Layout.fillWidth: true
+          label: "Runtime epoch"
+          value: jackal.epoch !== "" ? jackal.epoch : "—"
+          sub: "package located by the operator CLI"
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+        JkStat {
+          Layout.fillWidth: true
+          label: "Identity"
+          value: jackal.report ? (jackal.identityMatch ? "match" : "unproven") : "—"
+          sub: "locator ↔ package fields"
+          tone: jackal.report ? (jackal.identityMatch ? root.foreground : root.urgent) : root.dim
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+        JkStat {
+          Layout.fillWidth: true
+          label: "Declared tools"
+          value: jackal.declaredToolCount > 0 ? String(jackal.declaredToolCount) : "—"
+          sub: "capability_inventory_v1.json"
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+        JkStat {
+          Layout.fillWidth: true
+          label: "Tools observed"
+          value: String(root.allSummary.tools)
+          sub: "distinct in the ledger · recall"
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+        JkStat {
+          Layout.fillWidth: true
+          label: "Receipts retained"
+          value: jackal.receiptCount >= 0 ? String(jackal.receiptCount) : "—"
+          sub: "content-addressed on disk"
+          foreground: root.foreground; fontFamily: root.fontFamily
+        }
+      }
+
+      Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
+
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Package SHA-256"
+        value: jackal.packageSha !== "" ? jackal.packageSha : "—"
+        copyable: jackal.packageSha !== ""
+        foreground: root.foreground; fontFamily: root.fontFamily
+        onCopyRequested: jackal.copyText(jackal.packageSha, "package digest")
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Catalog SHA-256"
+        value: jackal.catalogSha !== "" ? jackal.catalogSha : "—"
+        copyable: jackal.catalogSha !== ""
+        foreground: root.foreground; fontFamily: root.fontFamily
+        onCopyRequested: jackal.copyText(jackal.catalogSha, "catalog digest")
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Inventory SHA-256"
+        value: jackal.report && jackal.report.capability && jackal.report.capability.inventory_sha256
+          ? String(jackal.report.capability.inventory_sha256) : "—"
+        foreground: root.foreground; fontFamily: root.fontFamily
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Doctor runtime"
+        value: jackal.doctorRuntimePath !== "" ? jackal.doctorRuntimePath : "—"
+        foreground: root.foreground; fontFamily: root.fontFamily
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Provisioner"
+        value: jackal.verifyReport && jackal.verifyReport.provisioner ? String(jackal.verifyReport.provisioner) : "run Runtime verify to name it"
+        tone: jackal.verifyReport && jackal.verifyReport.provisioner ? root.foreground : root.faint
+        foreground: root.foreground; fontFamily: root.fontFamily
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Host"
+        value: jackal.hostText !== "" ? jackal.hostText : "—"
+        foreground: root.foreground; fontFamily: root.fontFamily
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Every tool declares refused"
+        value: jackal.inventory === null ? "—" : (jackal.everyToolDeclaresRefused ? "yes — observed on these exact bytes" : "no: " + jackal.toolsWithoutRefused.join(", "))
+        tone: jackal.inventory === null ? root.dim : (jackal.everyToolDeclaresRefused ? root.foreground : root.urgent)
+        foreground: root.foreground; fontFamily: root.fontFamily
+      }
+      JkKeyValue {
+        Layout.fillWidth: true
+        label: "Governing non-claim"
+        value: jackal.nonClaim !== "" ? jackal.nonClaim : "—"
+        copyable: jackal.nonClaim !== ""
+        foreground: root.foreground; fontFamily: root.fontFamily
+        wrap: true
+        onCopyRequested: jackal.copyText(jackal.nonClaim, "non-claim")
+      }
+
+      Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.hairline }
+
+      JkSectionTitle {
+        Layout.fillWidth: true
+        title: "Non-claims"
+        note: "what the doctor and the runtime verifier refuse to imply"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+      }
+
+      Flickable {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        contentWidth: width
+        contentHeight: nonClaimColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        Column {
+          id: nonClaimColumn
+          width: parent.width
+          spacing: Style.space(3)
+          Repeater {
+            model: {
+              var out = []
+              if (jackal.report && Array.isArray(jackal.report.non_claims))
+                for (var i = 0; i < jackal.report.non_claims.length; i++) out.push("doctor · " + jackal.report.non_claims[i])
+              if (jackal.verifyReport && Array.isArray(jackal.verifyReport.non_claims))
+                for (var j = 0; j < jackal.verifyReport.non_claims.length; j++) out.push("verify · " + jackal.verifyReport.non_claims[j])
+              return out
+            }
+            delegate: Caption {
+              required property var modelData
+              width: parent.width
+              text: modelData
             }
           }
         }

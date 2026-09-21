@@ -1,77 +1,39 @@
-# JACKAL Omarchy Edition 2.6.3
+# JACKAL Omarchy Edition 3.0.0
 
-This release keeps the requirements-complete SPARK assurance-policy component,
-exhaustive JavaScript conformance, deterministic release reproduction, and
-public pinned assurance automation from 2.6.2, while correcting the manual-copy
-migration procedure discovered during live deployment. Operator backups now
-live outside Omarchy's plugin catalog, preventing an old manifest with the same
-permanent plugin ID from blocking the replacement Git clone. The mathematical
-JACKAL runtime remains a separate, pinned dependency with its own release epoch
-and assurance model.
+This release rebuilds the plugin's three surfaces — bar pill, dropdown and
+full-screen cockpit — on Omarchy's own UI kit and theme singletons. The private
+palette is gone; the surfaces take every colour from the active theme and read
+as first-party panels. The mathematical JACKAL runtime remains a separate,
+pinned dependency with its own release epoch and assurance model, and the
+display boundary is unchanged: assurance vocabulary verbatim, refusal identity
+kept, recall labelled as recall, graph pixels never evidence.
 
 ## Highlights
 
-- Professional graphite, steel, white, and crimson evidence surface.
-- Stable, pixel-aligned scrolling plane without green status semantics or
-  animated interference behind text.
-- Fresh function probes separated from installed capability and runtime
-  integrity.
-- Bundled portable operator CLI; no fixed username, checkout, or runtime epoch.
-- Optional transparent MCP ledger with concurrent-write protection, bounded
-  retention, outward decimal rendering, and retained formal receipts.
-- Verification router that keeps operator expectations structurally separate
-  from the artifact under review.
-- Assurance-aware graph and linked-workspace previews whose pixels are
-  explicitly non-evidentiary.
-- Component-scoped SPARK Platinum proof for the pure finite assurance-policy
-  kernel, with fail-closed rejection of unproved or justified checks.
-- Exhaustive SPARK-to-JavaScript policy vectors and explicit bridge residuals.
-- Bidirectional machine-readable requirements and traceability enforcement.
-- Byte-identical clean-checkout release reproduction after removing volatile
-  POSIX PAX metadata.
-- Exact local commit archive, deterministic independent repository creation,
-  and pre-execution Git tree-identity equality in both reproduction trees.
-- No remote, fetched, or shared-worktree source executes in release
-  reproduction.
-- Pinned GitHub assurance automation and standards-facing proof documentation.
-- Proof-tool installations isolated from the repository checkout in hosted CI.
-- Fail-closed doctor behavior when any canonical function probe is undeclared.
-- Catalog-safe migration from a manually copied plugin, with a regression test
-  that rejects duplicate-ID backup guidance.
+- Theme-native everywhere: `Color.menu.*`, `Color.accent`, `Color.urgent`,
+  `Style.font.*`, `Style.space` — no hex colour in any surface, enforced by
+  `tests/presentation.test.py`.
+- Bar pill with a live last-hour call count and an accent pulse on new ledger
+  rows; a real Omarchy dropdown with activity instrument, latest answer, recent
+  feed and one-key actions.
+- Seven-deck cockpit: overview, ledger (filters, expandable rows), graph deck,
+  probes, verify (with retained receipts and one-click re-verification),
+  register, THOTH. `SUPER + SHIFT + J`, an app-launcher entry and
+  `omarchy-shell khephri.jackal deck <name>` open it.
+- Ledger analytics in `Model.js` (summary, buckets, histogram, leaderboard)
+  under 42 new checks; every aggregate is a count of rows.
+- One passive service for the cockpit, so two surfaces never run two doctors.
 
-## Compatibility
+## Assurance boundary
 
-- Omarchy Quattro shell plugin interface.
-- Plugin ID: `khephri.jackal`.
-- JACKAL runtime: discovered dynamically through the installed Codex plugin and
-  runtime locator.
-- Python 3.10 or newer.
+- A count is a count of ledger rows. The bar's number, the activity instrument,
+  the spectrum and the leaderboard are recall, and say so beside themselves.
+- No number on any deck is typed in; the hardcoded surface totals are removed.
+- The verification front door keeps the operator's expectations structurally
+  separate from the artifact under review. A refusal there is a verdict.
 
-## Verification boundary
+## Verification
 
-The release proves the requirements allocated to `Jackal_Assurance_Policy` and
-tests presentation, parsing, routing, refusal behavior, operator diagnostics,
-ledger transparency, concurrency, outward rendering, repository policy,
-release reproduction, and live Omarchy validation on the development host. The
-complete mixed-language plugin is not claimed as Platinum. These checks do not
-establish universal correctness, security certification, mathematical
-soundness of every JACKAL lane, flight qualification, or organizational
-endorsement.
-
-## Install
-
-```sh
-omarchy plugin add https://github.com/AnubisQuantumCipher/jackal-omarchy.git --enable
-```
-
-Review the source and exact release commit before installation. Omarchy plugins
-run unsandboxed as the current user.
-
-## Remove
-
-```sh
-omarchy plugin remove khephri.jackal
-```
-
-Removal does not delete JACKAL runtimes, operator expectations, ledger rows, or
-retained receipts.
+`./scripts/check.sh` — traceability, repository policy, operator CLI, ledger,
+presentation, Model (177 checks), SPARK/JavaScript conformance, router, shell
+syntax, `omarchy plugin validate`, and Qt 6 `qmllint` over every QML file.

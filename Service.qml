@@ -18,6 +18,14 @@ Item {
 
   property var settings: ({})
 
+  // A passive service never probes on its own clock: the cockpit's copy waits
+  // for an open, so two surfaces do not run two doctors every interval. The
+  // bar widget's copy is the one that keeps the session account current.
+  property bool passive: false
+  // True while a surface that reads ages is on screen; the clock ticks each
+  // second then, and every fifteen otherwise.
+  property bool live: false
+
   // ---- Function: established only by tools executed in this session --------
 
   // Last `doctor --json` payload, with a receipt timestamp stamped on arrival.
@@ -35,6 +43,9 @@ Item {
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 900, 60, 86400)
   readonly property int staleAfterSec: intSetting("staleAfterSec", 2400, 120, 172800)
   readonly property bool probeOnOpen: setting("probeOnOpen", true) === true
+  readonly property int activityWindowHours: intSetting("activityWindowHours", 24, 1, 720)
+  readonly property int feedLimit: intSetting("feedLimit", 8, 3, 50)
+  readonly property bool barShowActivity: setting("barShowActivity", true) === true
 
   readonly property bool busy: doctorProcess.running || verifyProcess.running
   // Not named `state`: Item already owns that property.
@@ -87,7 +98,22 @@ Item {
   // it is read fresh from disk and never cached across a failed read: a stale
   // answer presented as recent would be its own small lie.
   property var results: []
+  // Every row the ledger holds (newest first). The activity instruments
+  // aggregate over this; `results` is the short feed slice of it.
+  property var allResults: []
   property bool resultsReadQueued: false
+  // The newest row's timestamp at the last read, so a later read can tell a
+  // new answer from a re-read of the same file — that is what the bar flashes
+  // on. Zero until the first read completes.
+  property double newestLedgerMs: 0
+  property double ledgerAdvancedAtMs: 0
+  signal ledgerAdvanced()
+  // How many receipts the wrapper has retained on disk: files named by digest
+  // in the receipts directory. -1 until counted. A count, not a verification.
+  property int receiptCount: -1
+  // The retained digests, newest file first. Names only — the panel derives a
+  // path from a digest, never the other way round.
+  property var receiptDigests: []
   readonly property string resultsPath:
     Quickshell.env("HOME") + "/.local/state/jackal/results.jsonl"
   readonly property string receiptsDir:
@@ -204,6 +230,15 @@ Item {
     resultsProcess.reset()
     resultsProcess.command = ["/usr/bin/cat", "--", resultsPath]
     resultsProcess.running = true
+  }
+
+  // Count retained receipts. Only names shaped like a digest are counted, so a
+  // stray file in that directory cannot inflate the number.
+  function readReceipts() {
+    if (receiptsProcess.running) return
+    receiptsProcess.reset()
+    receiptsProcess.command = ["/usr/bin/ls", "-1t", "--", receiptsDir]
+    receiptsProcess.running = true
   }
 
   function readNonClaim() {
@@ -387,7 +422,12 @@ Item {
     actionStatus = ""
   }
 
-  Component.onCompleted: nowMs = Date.now()
+  Component.onCompleted: {
+    nowMs = Date.now()
+    // The ledger is read at startup so the bar's activity count is true from
+    // the first paint, not only after the first open.
+    readResults()
+  }
 
   // Keep LATEST ANSWER live while the dropdown remains open. FileView is only
   // a change notification here; the normal process path still performs the
@@ -534,7 +574,16 @@ Item {
 
     function settle() {
       if (!exited || !outDone) return
-      root.results = exitCode === 0 ? Model.parseResults(outText) : []
+      var rows = exitCode === 0 ? Model.parseLedger(outText) : []
+      root.allResults = rows
+      root.results = rows.slice(0, Model.RESULT_LIMIT)
+      var newest = rows.length > 0 ? rows[0].atMs : 0
+      if (root.newestLedgerMs > 0 && newest > root.newestLedgerMs) {
+        root.ledgerAdvancedAtMs = Date.now()
+        root.ledgerAdvanced()
+      }
+      root.newestLedgerMs = newest
+      root.readReceipts()
       if (root.resultsReadQueued) {
         root.resultsReadQueued = false
         resultsRefresh.restart()
@@ -553,6 +602,45 @@ Item {
       resultsProcess.exitCode = code
       resultsProcess.exited = true
       resultsProcess.settle()
+    }
+  }
+
+  Process {
+    id: receiptsProcess
+    command: ["true"]
+
+    property string outText: ""
+    property bool exited: false
+    property bool outDone: false
+    property int exitCode: 0
+
+    function reset() { outText = ""; exited = false; outDone = false; exitCode = 0 }
+
+    function settle() {
+      if (!exited || !outDone) return
+      if (exitCode !== 0) { root.receiptCount = 0; root.receiptDigests = []; return }
+      var lines = String(outText).split("\n")
+      var digests = []
+      for (var i = 0; i < lines.length; i++) {
+        var name = lines[i].trim()
+        if (/^[0-9a-f]{64}\.json$/.test(name)) digests.push(name.slice(0, 64))
+      }
+      root.receiptCount = digests.length
+      root.receiptDigests = digests
+    }
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        receiptsProcess.outText = String(text || "")
+        receiptsProcess.outDone = true
+        receiptsProcess.settle()
+      }
+    }
+    onExited: function(code) {
+      receiptsProcess.exitCode = code
+      receiptsProcess.exited = true
+      receiptsProcess.settle()
     }
   }
 
@@ -703,21 +791,22 @@ Item {
   // second of subprocess work before the bar has drawn.
   Timer {
     interval: 4000
-    running: true
+    running: !root.passive
     repeat: false
     onTriggered: root.refresh()
   }
 
   Timer {
     interval: Math.max(60, root.refreshIntervalSec) * 1000
-    running: true
+    running: !root.passive
     repeat: true
     onTriggered: root.refresh()
   }
 
-  // Cheap clock so staleness and "probed 12m ago" stay truthful between probes.
+  // Cheap clock so staleness and "probed 12m ago" stay truthful between probes,
+  // and so an open surface's ages move by the second.
   Timer {
-    interval: 15000
+    interval: root.live ? 1000 : 15000
     running: true
     repeat: true
     onTriggered: root.nowMs = Date.now()
