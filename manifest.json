@@ -2,19 +2,21 @@
   "schemaVersion": 1,
   "id": "khephri.jackal",
   "name": "JACKAL + THOTH",
-  "version": "2.7.1",
+  "version": "3.0.0",
   "author": "Khephri Labs / Anubis Quantum Cipher",
   "license": "MIT",
-  "description": "Open-source graphite-and-crimson evidence surface for JACKAL: live function probes, assurance-preserving result recall, runtime verification routing, and an explicitly non-evidentiary graph preview. THOTH remains JACKAL's integrated measurement/provenance subsystem.",
+  "description": "Theme-native evidence surface for JACKAL, built the way Omarchy builds its own panels: a bar pill with a live call count, a keyboard-driven dropdown (hero, activity, latest answer, recent feed, actions), and a full-screen mission-control cockpit with a live activity instrument, status spectrum, tool leaderboard, expandable ledger, live graph deck, session probes, the verification front door, the evidence register and the sealed THOTH identity. Every colour comes from the operator's theme; assurance vocabulary is rendered without promotion.",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "overlay"
   ],
   "entryPoints": {
-    "barWidget": "Panel.qml"
+    "barWidget": "Panel.qml",
+    "overlay": "Cockpit.qml"
   },
   "barWidget": {
     "displayName": "JACKAL + THOTH",
-    "description": "Unified JACKAL evidence, integrated THOTH measurement, recent results, professional graph preview, verification front door, evidence register, and live function probes.",
+    "description": "JACKAL + THOTH: session function as a glyph, calls in the last hour beside it, and a dropdown with live activity, the latest answer, the recent feed and one-key actions. Click for the dropdown, middle-click for the cockpit, right-click to probe.",
     "category": "Developer Tools",
     "allowMultiple": false,
     "defaultSection": "right",
@@ -22,7 +24,10 @@
       "refreshIntervalSec": 900,
       "staleAfterSec": 2400,
       "probeOnOpen": true,
-      "expectationsPath": ""
+      "expectationsPath": "",
+      "activityWindowHours": 24,
+      "feedLimit": 8,
+      "barShowActivity": true
     },
     "schema": [
       {
@@ -55,7 +60,34 @@
         "label": "Verification authorization file",
         "description": "Operator-owned expectations used to verify clipboard artifacts. Never taken from the artifact under review. Blank uses ~/.config/omarchy/jackal-expectations.json.",
         "defaultValue": ""
+      },
+      {
+        "key": "activityWindowHours",
+        "type": "integer",
+        "label": "Activity window (hours)",
+        "description": "How far back the activity instrument, status spectrum and tool leaderboard look. Counts of ledger rows; recall, not evidence.",
+        "min": 1,
+        "max": 720,
+        "step": 1,
+        "defaultValue": 24
+      },
+      {
+        "key": "feedLimit",
+        "type": "integer",
+        "label": "Recent rows shown",
+        "min": 3,
+        "max": 50,
+        "step": 1,
+        "defaultValue": 8
+      },
+      {
+        "key": "barShowActivity",
+        "type": "boolean",
+        "label": "Show last-hour call count in the bar",
+        "description": "A count of ledger rows from the last hour beside the state glyph. It says the kernel was used; it states no answer.",
+        "defaultValue": true
       }
     ]
-  }
+  },
+  "keepLoaded": true
 }

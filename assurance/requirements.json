@@ -132,17 +132,19 @@
     },
     {
       "id": "JOP-UI-001",
-      "shall": "The dropdown shall preserve returned assurance vocabulary, refusal identity, consequence ceilings, and graph non-evidence labels without promoting them through color or wording.",
+      "shall": "Every JACKAL evidence surface — the bar dropdown and the full-screen cockpit alike — shall preserve returned assurance vocabulary, refusal identity, consequence ceilings, and graph non-evidence labels without promoting them through color or wording.",
       "method": "structural-and-live-test",
       "status": "tested",
       "allocation": [
-        "Panel.qml"
+        "Panel.qml",
+        "Cockpit.qml"
       ],
       "verification": [
         "tests/presentation.test.py"
       ],
       "residuals": [
-        "QML rendering and compositor behavior are not inside the SPARK proof boundary."
+        "QML rendering and compositor behavior are not inside the SPARK proof boundary.",
+        "Overlay-kind surfaces receive operator configuration by walking shell.shellConfig; a missed merge degrades silently to manifest defaults."
       ]
     },
     {

@@ -24,7 +24,11 @@ const exported = [
   "graphWorksheet", "parseWorksheetValues", "graphMetaText", "graphTicks",
   "graphTickLabel", "graphRefusedRuns", "graphExtremes", "graphHoverText",
   "VERIFY_SCHEMA", "verifyStatusLabel", "verifyIsAffirmative", "verifyIsAlarming",
-  "verifyIsRefusal", "verifyRaisedByText", "authorizedRows", "verifySubject"
+  "verifyIsRefusal", "verifyRaisedByText", "authorizedRows", "verifySubject",
+  "parseLedger", "LEDGER_ROW_LIMIT", "rowsWithin", "percentile", "ledgerSummary",
+  "activityBuckets", "statusHistogram", "toolLeaderboard", "feedRows", "statusTone",
+  "formatMs", "clockText", "dayClockText", "windowLabel", "countText",
+  "fieldRows", "argumentRows"
 ];
 
 const Model = new Function(
@@ -613,6 +617,87 @@ eq("extremes come from evaluator samples only",
 check("hover text names the sample and never interpolates",
   Model.graphHoverText({ x: 1, y: null }, 1, 96) === "x 1 · refused · sample 2/96"
   && Model.graphHoverText({ x: 0.5, y: 4 }, 0, 96) === "x 0.5 · f 4 · sample 1/96");
+
+
+// ---------------------------------------------------------------------------
+// Ledger analytics — aggregated recall. Counts of rows are counts of rows; no
+// aggregate re-derives a status, and a refusal is counted as a refusal.
+
+{
+  const T0 = 1_700_000_000_000;
+  const mk = (i, extra = {}) => JSON.stringify({
+    ts: (T0 - i * 60_000) / 1000, tool: "jackal_exact", status: "exact",
+    round_trip_ms: 80 + i, engine_output: "status=exact parsed=1+1 exact=2 approx=2",
+    fields: { exact: "2", parsed: "1+1" }, non_claims: ["NOT formal-bounded"], ...extra
+  });
+  const ledger = [
+    mk(5, { tool: "jackal_prime_cert" }),
+    mk(4, { status: "refused", reason: "evaluator-refused", detail: "fail closed", round_trip_ms: 12 }),
+    mk(3, { tool: "jackal_sqrt_rat_bound", status: "formal-bounded", formal: true,
+            receipt_digest_sha256: "a".repeat(64), receipt_path: "/x" }),
+    mk(2), mk(1), mk(0)
+  ].join("\n");
+
+  const rows = Model.parseLedger(ledger);
+  eq("parseLedger keeps every row, newest first", rows.length, 6);
+  eq("newest row is first", rows[0].atMs, T0);
+  eq("round trip is carried as a timing", rows[0].roundTripMs, 80);
+  eq("a row without the field reads -1, not 0", Model.parseLedger(JSON.stringify({ ts: 1, tool: "x", status: "exact" }))[0].roundTripMs, -1);
+  eq("fields are carried key-sorted", rows[0].fields.map(f => f.key).join(","), "exact,parsed");
+  eq("non-claims are carried verbatim", rows[0].nonClaims[0], "NOT formal-bounded");
+  eq("parseResults is the short slice of the same parse", Model.parseResults(ledger).length, Math.min(6, Model.RESULT_LIMIT));
+
+  const all = Model.ledgerSummary(rows, T0, 0);
+  eq("summary counts every row when unwindowed", all.total, 6);
+  eq("refusals are counted as refusals", all.refused, 1);
+  eq("answers are everything not refused", all.answered, 5);
+  eq("formal rows are counted apart", all.formal, 1);
+  eq("retained receipts are counted apart", all.retained, 1);
+  eq("distinct tools are counted", all.tools, 3);
+  // Sorted trips are [12, 80, 81, 82, 83, 85]; nearest-rank p50 is the 3rd.
+  eq("median round trip is the nearest-rank median", all.medianMs, 81);
+  eq("p90 round trip is the nearest-rank p90", all.p90Ms, 85);
+
+  const windowed = Model.ledgerSummary(rows, T0, 2.5 * 60_000);
+  eq("a window excludes older rows", windowed.total, 3);
+  eq("rowsWithin agrees with the summary", Model.rowsWithin(rows, T0, 2.5 * 60_000).length, 3);
+
+  const buckets = Model.activityBuckets(rows, T0, 6 * 60_000, 6);
+  eq("buckets span the window", buckets.buckets.length, 6);
+  // The row exactly on the last boundary belongs to the newest bucket, never
+  // to the one before it and never outside the window.
+  eq("rows at the window edge land in the newest bucket", buckets.buckets[5].total, 2);
+  eq("a refusal stacks apart from answers", buckets.buckets[1].refused + buckets.buckets[2].refused, 1);
+  eq("rows older than the window are left out, not clamped in",
+    Model.activityBuckets(rows, T0, 60_000, 2).buckets.reduce((n, b) => n + b.total, 0), 2);
+
+  const hist = Model.statusHistogram(rows);
+  eq("the histogram is in JACKAL's words", hist[0].status, "exact");
+  eq("the histogram counts by class", hist.find(h => h.status === "formal-bounded").count, 1);
+  check("only the refused class is marked refused", hist.every(h => h.refused === (h.status === "refused")));
+
+  const board = Model.toolLeaderboard(rows, 2);
+  eq("the busiest tool leads", board[0].tool, "jackal_exact");
+  eq("the leaderboard honours its limit", board.length, 2);
+  eq("the leader's share is 1", board[0].share, 1);
+  eq("refusals ride along per tool", board[0].refused, 1);
+
+  eq("feed filter: refused", Model.feedRows(rows, "refused").length, 1);
+  eq("feed filter: formal", Model.feedRows(rows, "formal").length, 1);
+  eq("feed filter: answered excludes refusals", Model.feedRows(rows, "answered").length, 5);
+  eq("feed filter honours its limit", Model.feedRows(rows, "all", 2).length, 2);
+
+  eq("statusTone has two values: refused", Model.statusTone(rows[4]), "refused");
+  eq("statusTone has two values: answer", Model.statusTone(rows[0]), "answer");
+  eq("formatMs: milliseconds", Model.formatMs(87), "87 ms");
+  eq("formatMs: seconds", Model.formatMs(15622), "16 s");
+  eq("formatMs: nothing", Model.formatMs(-1), "—");
+  eq("windowLabel: hours", Model.windowLabel(24 * 3600 * 1000), "24 h");
+  eq("windowLabel: days", Model.windowLabel(72 * 3600 * 1000), "3 d");
+  eq("windowLabel: minutes", Model.windowLabel(30 * 60 * 1000), "30 min");
+  eq("countText pluralises", Model.countText(1, "call", "calls") + "/" + Model.countText(2, "call", "calls"), "1 call/2 calls");
+  eq("clockText is empty for nothing", Model.clockText(0), "");
+}
 
 // ---------------------------------------------------------------------------
 

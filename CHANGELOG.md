@@ -3,6 +3,55 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 3.0.0 — 2026-09-20
+
+### Changed
+
+- Rebuilt every surface on Omarchy's own UI kit and theme singletons. The
+  private graphite-and-crimson palette is gone; every colour, size and spacing
+  now comes from the active theme (`Color.menu.*`, `Color.accent`,
+  `Color.urgent`, `Style.font.*`, `Style.space`), so the plugin renders native
+  under any Omarchy theme. State colours keep their rule and their lack of a
+  middle value: established → text colour, refusal or downgrade → urgent, not
+  established → dimmed. Accent is chrome and the activity instrument only.
+- The bar slot is a pill again — one glyph for session function — and now
+  carries the number of kernel calls in the last hour beside it. A count of
+  ledger rows is recall and states no answer; it can be switched off with
+  `barShowActivity`. A new ledger row lights a brief accent underline.
+- Left click opens a real Omarchy dropdown (`KeyboardPanel` + `PanelHero` +
+  `PanelKeyCatcher`): live activity instrument, latest answer, recent feed,
+  one-key actions, single-cursor j/k/h/l navigation and Tab to the neighbouring
+  panel. Middle click opens the cockpit; right click probes.
+- The cockpit is a centred, scrim-backed mission-control card with seven decks
+  (1–7, Tab): OVERVIEW with stat tiles, a bucketed activity timeline, a status
+  spectrum, the latest answers, session function, the sealed runtime, a tool
+  leaderboard and the verify lane; LEDGER with filters and rows that expand to
+  the returned fields, full arguments and non-claims; GRAPH; PROBES; VERIFY
+  with the retained receipts listed for one-click re-verification; REGISTER
+  with each family's backing sentence; THOTH with every identity read from the
+  runtime.
+- The cockpit's service is passive: it probes on open and on demand, so two
+  surfaces no longer run two doctors every interval. The runtime tree check runs
+  once per cockpit session so the provisioner is named without a click.
+
+### Added
+
+- `Model.js` ledger analytics: `parseLedger`, `ledgerSummary`,
+  `activityBuckets`, `statusHistogram`, `toolLeaderboard`, `feedRows` and
+  formatting helpers, with 42 new checks. Every aggregate is a count of rows;
+  none re-derives a status.
+- Shared instrument components (`Jk*.qml`): result row, timeline, spectrum,
+  chip, stat tile, key/value line, leaderboard row, section title.
+- Operator settings `activityWindowHours`, `feedLimit`, `barShowActivity`.
+- IPC routes `deck <name>` and `verify`; a `.desktop` launcher with deck
+  actions; the `SUPER + SHIFT + J` binding.
+
+### Removed
+
+- The typed-in "74 tools / STEM / number theory / engineering" tiles. The THOTH
+  deck now shows the declared tool count from the installed inventory and the
+  distinct tools observed in the ledger, and nothing that was not read.
+
 ## 2.7.1 — 2026-08-29
 
 ### Improved

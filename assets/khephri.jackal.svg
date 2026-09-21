@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- JACKAL: a shield that states exactly one check, and the two axes it keeps apart. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7aa2f7"/>
+      <stop offset="1" stop-color="#3d5a99"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="#13141c"/>
+  <path d="M32 10 L50 17 V31 C50 43 42 51 32 55 C22 51 14 43 14 31 V17 Z" fill="url(#g)"/>
+  <path d="M32 14.5 L46 20 V31 C46 40.5 40 47 32 50.5 C24 47 18 40.5 18 31 V20 Z" fill="#13141c"/>
+  <path d="M24 32.5 L29.5 38 L41 25" fill="none" stroke="#c0caf5" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="22" y="43" width="20" height="2" rx="1" fill="#7aa2f7" opacity="0.9"/>
+</svg>

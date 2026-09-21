@@ -34,7 +34,11 @@ var GLYPH = {
   // anti-laundering boundary read as a broken tool.
   capped:        String.fromCodePoint(0xF0792),
   refresh:       String.fromCodePoint(0xF0450),  // refresh
-  copy:          String.fromCodePoint(0xF018F)   // content-copy
+  copy:          String.fromCodePoint(0xF018F),  // content-copy
+  // A framed plane, not an arrow: the cockpit is the same accounts at
+  // instrument scale, not a different or "fuller" claim. Deliberately a plain
+  // geometric codepoint so it renders even without the Nerd Font md range.
+  cockpit:       String.fromCodePoint(0x25A3)
 }
 
 // ---------------------------------------------------------------------------
@@ -545,10 +549,19 @@ function sortConsequencesDescending(values) {
 var RESULT_LIMIT = 10
 
 function parseResults(text) {
+  return parseLedger(text, RESULT_LIMIT)
+}
+
+// The whole ledger, newest first, capped only by LEDGER_ROW_LIMIT. The cockpit
+// aggregates over this; the dropdown feed uses the RESULT_LIMIT slice above.
+var LEDGER_ROW_LIMIT = 2000
+
+function parseLedger(text, limit) {
+  var max = typeof limit === "number" && limit > 0 ? limit : LEDGER_ROW_LIMIT
   var lines = String(text || "").split("\n")
   var rows = []
   // Newest last in the file, newest first on screen.
-  for (var i = lines.length - 1; i >= 0 && rows.length < RESULT_LIMIT; i--) {
+  for (var i = lines.length - 1; i >= 0 && rows.length < max; i--) {
     var line = lines[i].replace(/^\s+|\s+$/g, "")
     if (line === "") continue
     var entry = null
@@ -583,8 +596,46 @@ function resultRow(entry) {
     // the path: the panel rebuilds the path from the digest instead, so a
     // tampered ledger cannot steer a file read anywhere it likes. Without
     // retention the digest names evidence that no longer exists.
-    retained: String(entry.receipt_path || "") !== ""
+    retained: String(entry.receipt_path || "") !== "",
+    // Wall-clock round trip through the wrapper, as the wrapper measured it.
+    // -1 when the row predates the field. It is a timing, never an assurance.
+    roundTripMs: typeof entry.round_trip_ms === "number" && isFinite(entry.round_trip_ms)
+      ? entry.round_trip_ms : -1,
+    // The engine's own assurance sentence and the fields it returned, carried
+    // whole for the expanded row. Nothing here is renamed or ranked.
+    assurance: String(entry.assurance || ""),
+    fields: fieldRows(entry),
+    args: argumentRows(entry),
+    nonClaims: Array.isArray(entry.non_claims)
+      ? entry.non_claims.map(function(x) { return String(x) }) : []
   }
+}
+
+// The returned fields, key-sorted, exactly as the wrapper recorded them.
+function fieldRows(entry) {
+  var f = entry && entry.fields
+  if (!f || typeof f !== "object" || Array.isArray(f)) return []
+  var keys = Object.keys(f).sort()
+  var rows = []
+  for (var i = 0; i < keys.length; i++) rows.push({ key: keys[i], value: String(f[keys[i]]) })
+  return rows
+}
+
+// Every argument in full (up to a display cap), for the expanded row. The
+// compact `request` line truncates; this one does not hide a digit.
+function argumentRows(entry) {
+  var a = entry && entry.arguments
+  if (!a || typeof a !== "object" || Array.isArray(a)) return []
+  var keys = Object.keys(a).sort()
+  var rows = []
+  for (var i = 0; i < keys.length; i++) {
+    var value = a[keys[i]]
+    rows.push({
+      key: keys[i],
+      value: typeof value === "string" ? value.slice(0, 400) : JSON.stringify(value).slice(0, 400)
+    })
+  }
+  return rows
 }
 
 // The engine's own first output line, minus the `status=` prefix the row already
@@ -977,4 +1028,192 @@ function graphHoverText(point, index, total) {
   var base = "x " + graphNumberText(point.x)
   if (point.y === null) return base + " · refused · sample " + (index + 1) + "/" + total
   return base + " · f " + graphNumberText(point.y) + " · sample " + (index + 1) + "/" + total
+}
+
+
+// ---------------------------------------------------------------------------
+// Ledger analytics — aggregated recall
+//
+// Everything below counts, sorts and buckets rows of the local ledger so the
+// overview can draw an activity instrument. None of it re-derives a status: a
+// row's class is the class JACKAL returned, a refusal counts as a refusal, and
+// a round trip is a timing the wrapper measured. The aggregates inherit the
+// ledger's standing exactly — recall, not evidence — and the surfaces that
+// draw them say so beside them.
+
+function rowsWithin(rows, nowMs, windowMs) {
+  var list = rows || []
+  if (!(windowMs > 0)) return list.slice()
+  var floor = nowMs - windowMs
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && list[i].atMs >= floor) out.push(list[i])
+  }
+  return out
+}
+
+// Nearest-rank percentile over an ascending array; -1 for nothing.
+function percentile(sortedAsc, p) {
+  if (!sortedAsc || sortedAsc.length === 0) return -1
+  var rank = Math.ceil(Math.min(1, Math.max(0, p)) * sortedAsc.length) - 1
+  return sortedAsc[Math.min(sortedAsc.length - 1, Math.max(0, rank))]
+}
+
+function ledgerSummary(rows, nowMs, windowMs) {
+  var scoped = rowsWithin(rows, nowMs, windowMs)
+  var s = {
+    total: scoped.length, answered: 0, refused: 0, formal: 0, retained: 0,
+    tools: 0, newestMs: 0, oldestMs: 0,
+    medianMs: -1, p90Ms: -1, minMs: -1, maxMs: -1,
+    windowMs: windowMs > 0 ? windowMs : 0,
+    allTotal: (rows || []).length
+  }
+  var toolSet = {}
+  var trips = []
+  for (var i = 0; i < scoped.length; i++) {
+    var r = scoped[i]
+    if (r.refused) s.refused++; else s.answered++
+    if (r.formal) s.formal++
+    if (r.retained) s.retained++
+    if (r.tool) toolSet[r.tool] = true
+    if (r.atMs > s.newestMs) s.newestMs = r.atMs
+    if (r.atMs > 0 && (s.oldestMs === 0 || r.atMs < s.oldestMs)) s.oldestMs = r.atMs
+    if (r.roundTripMs >= 0) trips.push(r.roundTripMs)
+  }
+  s.tools = Object.keys(toolSet).length
+  trips.sort(function(a, b) { return a - b })
+  if (trips.length > 0) {
+    s.minMs = trips[0]
+    s.maxMs = trips[trips.length - 1]
+    s.medianMs = percentile(trips, 0.5)
+    s.p90Ms = percentile(trips, 0.9)
+  }
+  return s
+}
+
+// Fixed-width time buckets across the window, oldest first. A row outside the
+// window is left out, never clamped into the edge bucket.
+function activityBuckets(rows, nowMs, windowMs, count) {
+  var n = Math.max(1, Math.round(Number(count)) || 24)
+  var span = windowMs > 0 ? windowMs : 24 * 3600 * 1000
+  var start = nowMs - span
+  var width = span / n
+  var buckets = []
+  for (var b = 0; b < n; b++) {
+    buckets.push({ startMs: start + b * width, endMs: start + (b + 1) * width,
+                   answered: 0, refused: 0, total: 0 })
+  }
+  var max = 0
+  var list = rows || []
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i]
+    if (!r || !(r.atMs >= start) || r.atMs > nowMs) continue
+    var idx = Math.min(n - 1, Math.floor((r.atMs - start) / width))
+    var bk = buckets[idx]
+    if (r.refused) bk.refused++; else bk.answered++
+    bk.total++
+    if (bk.total > max) max = bk.total
+  }
+  return { buckets: buckets, max: max, startMs: start, endMs: nowMs, bucketMs: width }
+}
+
+// Status classes by count, in JACKAL's own words. Sorted by frequency because
+// this is a histogram; the axis order belongs to the register, not here.
+function statusHistogram(rows) {
+  var list = rows || []
+  var counts = {}
+  for (var i = 0; i < list.length; i++) {
+    var st = String(list[i].status || "unknown")
+    counts[st] = (counts[st] || 0) + 1
+  }
+  var out = []
+  for (var k in counts) {
+    out.push({ status: k, count: counts[k],
+               share: list.length > 0 ? counts[k] / list.length : 0,
+               refused: k === "refused" })
+  }
+  out.sort(function(a, b) {
+    return b.count - a.count || String(a.status).localeCompare(String(b.status))
+  })
+  return out
+}
+
+function toolLeaderboard(rows, limit) {
+  var list = rows || []
+  var counts = {}, refused = {}
+  for (var i = 0; i < list.length; i++) {
+    var t = String(list[i].tool || "")
+    if (t === "") continue
+    counts[t] = (counts[t] || 0) + 1
+    if (list[i].refused) refused[t] = (refused[t] || 0) + 1
+  }
+  var out = []
+  var max = 0
+  for (var k in counts) {
+    out.push({ tool: k, count: counts[k], refused: refused[k] || 0 })
+    if (counts[k] > max) max = counts[k]
+  }
+  out.sort(function(a, b) {
+    return b.count - a.count || String(a.tool).localeCompare(String(b.tool))
+  })
+  for (var j = 0; j < out.length; j++) out[j].share = max > 0 ? out[j].count / max : 0
+  return out.slice(0, typeof limit === "number" && limit > 0 ? limit : 6)
+}
+
+// The feed filters. "answered" is everything that was not refused, in whatever
+// class it came back; it is not a synonym for any one class.
+function feedRows(rows, filter, limit) {
+  var list = rows || []
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i]
+    if (filter === "refused" && !r.refused) continue
+    if (filter === "answered" && r.refused) continue
+    if (filter === "formal" && !r.formal) continue
+    out.push(r)
+    if (typeof limit === "number" && limit > 0 && out.length >= limit) break
+  }
+  return out
+}
+
+// A status is refused or it is an answer in some class. There is no third
+// tone, and no colour that means "probably fine".
+function statusTone(row) {
+  return row && row.refused ? "refused" : "answer"
+}
+
+function formatMs(ms) {
+  if (!(ms >= 0)) return "—"
+  if (ms < 1000) return Math.round(ms) + " ms"
+  return (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + " s"
+}
+
+function pad2(n) {
+  return (n < 10 ? "0" : "") + n
+}
+
+function clockText(ms) {
+  if (!(ms > 0)) return ""
+  var d = new Date(ms)
+  return pad2(d.getHours()) + ":" + pad2(d.getMinutes())
+}
+
+function dayClockText(ms) {
+  if (!(ms > 0)) return ""
+  var d = new Date(ms)
+  var day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]
+  return day + " " + clockText(ms)
+}
+
+function windowLabel(windowMs) {
+  if (!(windowMs > 0)) return "all"
+  var hours = windowMs / 3600000
+  if (hours < 1) return Math.round(windowMs / 60000) + " min"
+  if (hours < 48) return Math.round(hours) + " h"
+  return Math.round(hours / 24) + " d"
+}
+
+function countText(n, singular, plural) {
+  var v = Number(n) || 0
+  return v + " " + (v === 1 ? singular : plural)
 }

@@ -1,261 +1,241 @@
+// JACKAL + THOTH in the bar — the pill, and the dropdown it opens.
+//
+// JOP-UI-001: returned assurance vocabulary is rendered without promotion.
+//
+// The pill makes one claim, as a glyph: how well JACKAL's own function is
+// established in THIS shell session. Beside it rides a count of ledger rows
+// from the last hour — a count of calls, which is recall and says nothing
+// about assurance — so the bar shows the kernel being used without stating
+// any answer. The dropdown is an ordinary Omarchy panel: hero, activity,
+// latest answer, recent feed, actions. The cockpit (Cockpit.qml) carries the
+// full accounts at instrument scale.
+//
+// The colour rule is the cockpit's, and it has no middle:
+//   established            → the bar's own foreground
+//   refusal or downgrade   → the bar's urgent colour
+//   not established        → dimmed
+// Accent is used only for chrome and the activity instrument, never for a
+// state. There is deliberately no colour that means "probably fine".
+
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// JACKAL + THOTH in the bar.
-// JOP-UI-001: returned assurance vocabulary is rendered without promotion.
-//
-// JACKAL is a mathematical evidence kernel: every answer declares what kind of
-// answer it is, refusal is a first-class answer, and two independent things are
-// always stated — how well a fact is established (ASSURANCE) and what may be
-// decided on it (CONSEQUENCE). A ceiling is an upper bound, never a grant.
-//
-// THOTH is JACKAL's integrated measurement/provenance subsystem, not a second
-// engine. This widget is built to preserve that architecture and JACKAL's
-// assurance boundaries rather than summarise them away, so it keeps these
-// accounts strictly apart and never merges them into a score:
-//
-//   VERIFY             the one section that ACTS. Routes a clipboard receipt or
-//                      bundle to a real front door and prints its verdict
-//                      verbatim, against an authorization the operator owns —
-//                      never one taken from the artifact under review.
-//   AGENT SURFACE      which tools a profile exposes. The operator's lever.
-//   EVIDENCE REGISTER  capability — what actually stands behind an answer from
-//                      each family, with both axes, from the release's own
-//                      generated `capability_inventory_v1.json`.
-//   SESSION FUNCTION   function — established only by tools executed in this
-//                      shell session. Nothing else may colour the indicator.
-//
-// The two laws and the engine's governing non-claim are pinned outside the
-// scroll area, because they are the lines that must never be scrolled away.
 Panel {
   id: root
   moduleName: "khephri.jackal"
   ipcTarget: "khephri.jackal"
+  // manageIpc: false so this panel owns the single IpcHandler the target
+  // permits — needed for the cockpit/probe/state routes below.
   manageIpc: false
 
-  property string focusSection: "header"
-  property int registerIndex: 0
-  property bool cursorActive: false
-
-  // Dropdown-only professional machine-HUD palette: matte graphite, cold
-  // instrument white, and one disciplined crimson channel. The dropdown uses
-  // no green and no decorative colour that can be mistaken for evidence state.
-  // The bar glyph itself keeps the operator's theme colours, so this does not
-  // change the widget's established status semantics in the menu bar.
-  readonly property color panelVoid: "#050506"
-  readonly property color panelSurface: "#111214"
-  readonly property color telemetry: "#c8cdd3"
-  readonly property color signal: "#f1f3f5"
-  readonly property color reentry: "#d51f2d"
-  readonly property color frost: "#e8eaed"
-
-  readonly property color foreground: frost
-  readonly property color urgent: reentry
-  readonly property color dim: Qt.alpha(frost, 0.68)
-  readonly property color faint: Qt.alpha(frost, 0.44)
-  readonly property color barUrgent: bar ? bar.urgent : Color.urgent
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color barFg: bar ? bar.barForeground : Color.foreground
+  readonly property color urgent: bar ? bar.urgent : Color.urgent
+  readonly property color accent: Color.accent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property color dim: Qt.darker(foreground, 1.4)
+  readonly property color faint: Util.alpha(foreground, 0.46)
 
   readonly property string evidenceState: jackal.evidenceState
-  readonly property bool affirmative: Model.isAffirmative(evidenceState)
-  readonly property bool alarming: Model.isAlarming(evidenceState)
+  readonly property bool affirmative: Model.isAffirmative(root.evidenceState)
+  readonly property bool alarming: Model.isAlarming(root.evidenceState)
+  readonly property color stateColor: root.alarming
+    ? root.urgent : (root.affirmative ? root.foreground : root.dim)
+  readonly property color barIconColor: root.alarming
+    ? root.urgent : (root.affirmative ? root.barFg : Qt.darker(root.barFg, 1.55))
 
-  // In-panel colour: established → signal, refusal or downgrade →
-  // urgent, not established → dim. There is no colour that means "probably
-  // fine".
-  readonly property color stateColor: alarming ? urgent : (affirmative ? signal : dim)
-  readonly property color barIconColor: alarming
-    ? barUrgent
-    : (affirmative ? barForeground : Qt.darker(barForeground, 1.55))
-
+  // ---- ledger aggregates: counts of rows, nothing more ----------------------
+  readonly property int hourMs: 3600 * 1000
+  readonly property int windowMs: jackal.activityWindowHours * 3600 * 1000
+  readonly property int hourCount:
+    Model.rowsWithin(jackal.allResults, jackal.nowMs, root.hourMs).length
+  readonly property var summary:
+    Model.ledgerSummary(jackal.allResults, jackal.nowMs, root.windowMs)
+  readonly property var activity:
+    Model.activityBuckets(jackal.allResults, jackal.nowMs, root.windowMs, 24)
+  readonly property var newest: jackal.results.length > 0 ? jackal.results[0] : null
+  readonly property var recent:
+    jackal.results.slice(1, 1 + Math.min(5, Math.max(0, jackal.feedLimit - 1)))
+  readonly property bool newestFresh: jackal.ledgerAdvancedAtMs > 0
+    && jackal.nowMs - jackal.ledgerAdvancedAtMs < 60000
   readonly property string ageText: Model.ageText(jackal.receivedAtMs, jackal.nowMs)
-  readonly property string metaText: Model.stateLabel(evidenceState)
-    + (jackal.hostText !== "" ? " · " + jackal.hostText : "")
-    + " · probed " + ageText
+  readonly property string heroMeta: Model.stateLabel(root.evidenceState)
+    + " · " + (jackal.epoch !== "" ? "runtime " + jackal.epoch : "no runtime")
+    + " · probed " + root.ageText
 
-  readonly property int registerCount: jackal.familyRows.length
+  // ---- cursor model ---------------------------------------------------------
+  // One highlight across the panel: `focusSection` + index. Vertical order is
+  // the latest answer, the recent rows, then the action row; h/l walks the
+  // actions. Mouse hover and keys mutate the same state.
+  property bool cursorActive: false
+  property string focusSection: "actions"   // "feed" | "actions"
+  property int selectedIndex: 0
+  property int actionIndex: 0
 
-  function ensureCursor() {
-    if (registerCount === 0) {
-      focusSection = "header"
-      registerIndex = 0
-      return
-    }
-    if (focusSection !== "register" && focusSection !== "header") focusSection = "register"
-    if (registerIndex >= registerCount) registerIndex = registerCount - 1
-    if (registerIndex < 0) registerIndex = 0
+  readonly property var actions: [
+    { key: "cockpit", label: "Cockpit", icon: Model.GLYPH.cockpit,
+      hint: "Open mission control  (c)" },
+    { key: "probe", label: "Probe", icon: Model.GLYPH.refresh,
+      hint: "Run the session function probes now  (r)" },
+    { key: "verify", label: "Verify clipboard", icon: Model.GLYPH.verified,
+      hint: "Route the clipboard artifact to the front door  (v)" }
+  ]
+  readonly property int feedCount: (root.newest ? 1 : 0) + root.recent.length
+
+  function openCockpit(payload) {
+    root.close()
+    if (root.bar && root.bar.shell && typeof root.bar.shell.summon === "function")
+      root.bar.shell.summon("khephri.jackal", payload || "{}")
   }
 
-  function moveCursor(dx, dy) {
-    cursorActive = true
-    ensureCursor()
-    if (dy === 0) return
-    if (focusSection === "header") {
-      if (dy > 0 && registerCount > 0) {
-        focusSection = "register"
-        registerIndex = 0
-        scrollCursorIntoView()
-      }
-      return
-    }
-    if (focusSection === "register") {
-      if (dy < 0 && registerIndex === 0) {
-        setHeaderCursor()
-        return
-      }
-      registerIndex = Math.max(0, Math.min(registerCount - 1, registerIndex + dy))
-      scrollCursorIntoView()
-    }
-  }
-
-  function setHeaderCursor() {
-    cursorActive = true
-    focusSection = "header"
-    if (panelFlick) panelFlick.contentY = 0
-  }
-
-  function setRegisterCursor(index) {
-    cursorActive = true
-    focusSection = "register"
-    registerIndex = index
-    scrollCursorIntoView()
-  }
-
-  function selectedRegisterRow() {
-    if (registerCount === 0) return null
-    return jackal.familyRows[Math.max(0, Math.min(registerIndex, registerCount - 1))]
+  function runAction(key) {
+    if (key === "cockpit") root.openCockpit("{}")
+    else if (key === "probe") jackal.refresh()
+    else if (key === "verify") jackal.verifyArtifact()
   }
 
   function activateCursor() {
-    ensureCursor()
-    if (focusSection === "header") {
-      jackal.refresh()
-      return
+    if (root.focusSection === "actions") {
+      var action = root.actions[Math.max(0, Math.min(root.actions.length - 1, root.actionIndex))]
+      root.runAction(action.key)
+    } else {
+      root.openCockpit(JSON.stringify({ section: "ledger" }))
     }
-    var row = selectedRegisterRow()
-    // What you take away from a family is which tools are in it — so you know
-    // exactly which ones you are allowed to lean on, and how far.
-    if (row) jackal.copyText(row.tools.join(" "), row.family + " tools")
   }
 
-  function scrollItemIntoView(item) {
-    if (!panelFlick || !item) return
-    Qt.callLater(function() {
-      if (!item) return
-      var margin = Style.space(6)
-      var point = item.mapToItem(panelFlick.contentItem, 0, 0)
-      var top = point.y
-      var bottom = top + item.height
-      var viewTop = panelFlick.contentY
-      var viewBottom = viewTop + panelFlick.height
-      var maxY = Math.max(0, panelFlick.contentHeight - panelFlick.height)
-      if (top < viewTop + margin) panelFlick.contentY = Math.max(0, top - margin)
-      else if (bottom > viewBottom - margin) panelFlick.contentY = Math.min(maxY, bottom + margin - panelFlick.height)
-    })
+  function moveCursor(dy) {
+    pointerGate.reset()
+    if (root.focusSection === "feed") {
+      var next = root.selectedIndex + dy
+      if (next < 0) next = 0
+      if (next >= root.feedCount) { root.focusSection = "actions"; return }
+      root.selectedIndex = next
+    } else if (dy < 0 && root.feedCount > 0) {
+      root.focusSection = "feed"
+      root.selectedIndex = root.feedCount - 1
+    }
   }
 
-  function scrollCursorIntoView() {
-    if (focusSection === "register" && registerColumn && registerIndex >= 0 && registerIndex < registerColumn.children.length)
-      scrollItemIntoView(registerColumn.children[registerIndex])
+  function moveCursorH(dx) {
+    if (root.focusSection !== "actions") return
+    root.actionIndex = Math.max(0, Math.min(root.actions.length - 1, root.actionIndex + dx))
   }
 
-  // Preset sweeps for the live graph deck. The HELLGATE potential leads
-  // because it is the panel's long-standing reference render; 1/x is included
-  // deliberately so the refusal-breaks-the-curve behavior stays visible.
-  readonly property var graphPresets: [
-    { label: "HELLGATE V(x)", expr: "x^6-5*x^4+4*x^2", lo: "-2.6", hi: "2.6" },
-    { label: "sin(x)", expr: "sin(x)", lo: "-6.3", hi: "6.3" },
-    { label: "x^2-2", expr: "x^2-2", lo: "-3", hi: "3" },
-    { label: "damped sin", expr: "sin(3*x)*exp(0-x*x/4)", lo: "-4", hi: "4" },
-    { label: "1/x (breaks)", expr: "1/x", lo: "-2", hi: "2" }
-  ]
-
-  function plotFromFields() {
-    jackal.plotGraph(graphExpressionField.text, graphXMinField.text, graphXMaxField.text)
-    keyCatcher.forceActiveFocus()
+  function setFeedCursor(index) {
+    root.cursorActive = true
+    root.focusSection = "feed"
+    root.selectedIndex = index
   }
 
-  function plotPreset(preset) {
-    if (!preset) return
-    graphExpressionField.text = preset.expr
-    graphXMinField.text = preset.lo
-    graphXMaxField.text = preset.hi
-    jackal.plotGraph(preset.expr, preset.lo, preset.hi)
-    keyCatcher.forceActiveFocus()
+  // Pointer motion only: rows that move under a parked pointer never steal
+  // the cursor from the keyboard (kit PointerMoveGate, as the clipboard does).
+  function feedPointer(index, item, x, y) {
+    if (!pointerGate.moved(item, { x: x, y: y })) return
+    root.setFeedCursor(index)
   }
 
-  implicitWidth: button.implicitWidth
-  implicitHeight: button.implicitHeight
-
-  onOpenedChanged: if (opened) {
-    cursorActive = false
-    if (panelFlick) panelFlick.contentY = 0
-    if (systemsFlick) systemsFlick.contentY = 0
-    if (telemetryFlick) telemetryFlick.contentY = 0
-    jackal.refreshIfStale()
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  function setActionCursor(index) {
+    root.cursorActive = true
+    root.focusSection = "actions"
+    root.actionIndex = index
   }
-  onRegisterIndexChanged: scrollCursorIntoView()
+
+  onOpenedChanged: {
+    jackal.live = opened
+    if (opened) {
+      jackal.refreshIfStale()
+      root.cursorActive = false
+      root.focusSection = "actions"
+      root.actionIndex = 0
+      root.selectedIndex = 0
+      if (flick) flick.contentY = 0
+    }
+  }
 
   Service {
     id: jackal
     settings: root.settings
   }
 
+  PointerMoveGate {
+    id: pointerGate
+    referenceItem: column
+  }
+
   IpcHandler {
-    target: root.ipcTarget
+    target: "khephri.jackal"
     function open(): void { root.open() }
     function close(): void { root.close() }
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
+    function cockpit(): void { root.openCockpit("{}") }
+    // `omarchy-shell khephri.jackal deck ledger` lands the cockpit on a deck.
+    function deck(name: string): void { root.openCockpit(JSON.stringify({ section: String(name || "overview") })) }
     function probe(): string { jackal.refresh(); return "probing" }
-    function verify(): string { jackal.runVerify(); return "verifying" }
-    // The classification, not a bare "ok": a caller scripting against this sees
-    // the same word the bar is showing, drawn from JACKAL's own vocabulary.
-    function status(): string { return Model.stateLabel(root.evidenceState) }
-    function nonclaim(): string { return jackal.nonClaim }
-    // Verify whatever the clipboard holds against the operator's standing
-    // authorization. Returns the verdict word, not a bare "ok".
-    function verifyClipboard(): string {
-      jackal.verifyArtifact()
-      return "verifying"
-    }
-    function verdict(): string {
-      return jackal.verifyResult ? String(jackal.verifyResult.status) : "not-run"
-    }
-    // Sweep an expression through the sealed evaluator's worksheet lane and
-    // plot it on the deck. The same refusal rules as the UI path apply; the
-    // return word is about the sweep starting, never about the values.
-    function graph(expr: string, lo: string, hi: string): string {
-      jackal.plotGraph(expr, lo, hi)
-      return jackal.graphError !== "" ? jackal.graphError : "sweeping"
-    }
+    function verify(): string { jackal.verifyArtifact(); return "verifying" }
+    function state(): string { return root.evidenceState }
   }
 
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
+  // ---------------------------------------------------------------- the pill
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: Model.stateGlyph(root.evidenceState)
+      + (jackal.barShowActivity && root.hourCount > 0 ? " " + root.hourCount : "")
     slotSize: Style.bar.statusSlot
+    // The stock slot is one glyph wide; grow with the painted count so the
+    // neighbouring widget cannot paint over the number.
+    fixedWidth: vertical ? -1 : Math.max(slotSize, glyphPaintedWidth + Style.spaceReal(8))
     fontSize: Style.font.caption
     foreground: root.barIconColor
-    tooltipText: Model.tooltip(root.evidenceState, jackal.report, jackal.receivedAtMs, jackal.nowMs)
+    active: false
+    tooltipText: Model.tooltip(root.evidenceState, jackal.report,
+      jackal.receivedAtMs, jackal.nowMs)
+      + (root.hourCount > 0 ? "\n" + Model.countText(root.hourCount, "call", "calls") + " in the last hour (recall)" : "")
 
-    onPressed: function(buttonCode) {
+    onPressed: function (buttonCode) {
       if (buttonCode === Qt.RightButton) jackal.refresh()
-      else if (buttonCode === Qt.MiddleButton) jackal.runVerify()
+      else if (buttonCode === Qt.MiddleButton) root.openCockpit("{}")
       else root.toggle()
+    }
+
+    // A new ledger row lights the accent underline for under a second: the
+    // kernel answered something. It carries no class and no verdict.
+    Rectangle {
+      id: pulse
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: Style.space(3)
+      anchors.horizontalCenter: parent.horizontalCenter
+      width: Math.max(Style.space(10), parent.width - Style.space(10))
+      height: Style.space(2)
+      radius: 1
+      color: root.accent
+      opacity: 0
     }
   }
 
+  SequentialAnimation {
+    id: pulseAnimation
+    NumberAnimation { target: pulse; property: "opacity"; to: 1; duration: 80 }
+    NumberAnimation { target: pulse; property: "opacity"; to: 0; duration: 1100; easing.type: Easing.OutCubic }
+  }
+
+  Connections {
+    target: jackal
+    function onLedgerAdvanced() { pulseAnimation.restart() }
+  }
+
+  // ------------------------------------------------------------ the dropdown
   KeyboardPanel {
     id: panel
     anchorItem: button
@@ -263,1940 +243,296 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    borderSpec: Border.flat(root.reentry, Math.max(1, Style.space(1)))
-    // MISSION CONTROL: the dropdown claims the entire available screen plane
-    // below the bar. fitted/capped clamp to the current output, so a smaller
-    // monitor simply gets a smaller cockpit rather than an offscreen card.
-    contentWidth: panel.fittedContentWidth(panel.availableCardWidth > 0 ? panel.availableCardWidth : Style.space(520))
-    contentHeight: panel.cappedContentHeight(panel.availableCardHeight > 0 ? panel.availableCardHeight : Style.space(1200))
+    contentWidth: panel.fittedContentWidth(Style.space(430))
+    // Taller than a control panel on purpose: this one reads like a dashboard.
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(720))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
 
-      Rectangle {
-        anchors.fill: parent
-        z: -6
-        gradient: Gradient {
-          GradientStop { position: 0.0; color: "#111214" }
-          GradientStop { position: 0.56; color: root.panelVoid }
-          GradientStop { position: 1.0; color: "#020203" }
-        }
-      }
-
-      Rectangle {
-        anchors.left: parent.left
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        width: Style.space(2)
-        z: -3
-        gradient: Gradient {
-          GradientStop { position: 0.0; color: root.reentry }
-          GradientStop { position: 0.72; color: Qt.darker(root.reentry, 1.7) }
-          GradientStop { position: 1.0; color: Qt.alpha(root.telemetry, 0.34) }
-        }
-      }
-
-      Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: Style.space(80)
-        z: -3
-        gradient: Gradient {
-          GradientStop { position: 0.0; color: Qt.alpha(root.reentry, 0.17) }
-          GradientStop { position: 1.0; color: "transparent" }
-        }
-      }
-
-      Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: Style.space(2)
-        z: -2
-        gradient: Gradient {
-          orientation: Gradient.Horizontal
-          GradientStop { position: 0.0; color: root.reentry }
-          GradientStop { position: 0.68; color: root.reentry }
-          GradientStop { position: 1.0; color: Qt.alpha(root.telemetry, 0.28) }
-        }
-      }
       onMoveRequested: function(dx, dy) {
-        if (!root.cursorActive) { root.cursorActive = true; return }
-        root.moveCursor(dx, dy)
+        if (!root.cursorActive) { root.cursorActive = true; if (dy >= 0 && dx === 0) return }
+        if (dy !== 0) root.moveCursor(dy)
+        else if (dx !== 0) root.moveCursorH(dx)
       }
-      onActivateRequested: if (root.cursorActive) root.activateCursor()
+      onActivateRequested: {
+        if (root.cursorActive) root.activateCursor()
+        else root.openCockpit("{}")
+      }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
-        var key = String(t).toLowerCase()
-        if (key === "r") jackal.refresh()
-        else if (key === "v") jackal.runVerify()
-        else if (key === "c") jackal.copyText(jackal.packageSha, "package digest")
-        else if (key === "n") jackal.copyText(jackal.nonClaim, "non-claim")
-        else if (key === "p") jackal.verifyArtifact()
-        else if (key === "g") graphExpressionField.forceActiveFocus()
+        if (t === "r" || t === "R") jackal.refresh()
+        else if (t === "v" || t === "V") jackal.verifyArtifact()
+        else if (t === "c" || t === "C" || t === "o" || t === "O") root.openCockpit("{}")
+        else if (t === "g" || t === "G") root.openCockpit(JSON.stringify({ section: "graph" }))
       }
 
-      // ---- Command strip: identity and probe controls, never scrolls -------
-      Item {
-        id: header
-        anchors.left: parent.left
-        anchors.leftMargin: Style.space(9)
-        anchors.right: parent.right
-        anchors.rightMargin: Style.space(3)
-        anchors.top: parent.top
-        anchors.topMargin: Style.space(6)
-        height: hero.implicitHeight + Style.space(18)
-        readonly property bool ringVisible: root.cursorActive && root.focusSection === "header"
-        function focusHero() { root.setHeaderCursor() }
+      Flickable {
+        id: flick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        Rectangle {
-          anchors.fill: parent
-          radius: Style.cornerRadius
-          color: root.panelSurface
-          border.color: header.ringVisible ? root.signal : Qt.alpha(root.reentry, 0.46)
-          border.width: header.ringVisible ? Math.max(1, Style.space(1)) : 1
-        }
+        Column {
+          id: column
+          width: flick.width
+          spacing: Style.space(12)
 
-        Rectangle {
-          anchors.left: parent.left
-          anchors.top: parent.top
-          width: Style.space(44)
-          height: Style.space(2)
-          color: root.reentry
-          opacity: 0.88
-        }
+          // ---------- Hero: state glyph · JACKAL · state/runtime/age ----------
+          PanelHero {
+            width: parent.width
+            title: "JACKAL"
+            meta: root.heroMeta
+            detail: jackal.probeTotal > 0 ? jackal.probePassed + "/" + jackal.probeTotal : ""
+            foreground: root.foreground
+            fontFamily: root.fontFamily
 
-        Rectangle {
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          width: Style.space(32)
-          height: Style.space(2)
-          color: root.telemetry
-          opacity: 0.72
-        }
-
-        PanelHero {
-          id: hero
-          anchors.fill: parent
-          anchors.margins: Style.space(9)
-          title: "JACKAL + THOTH — MISSION CONTROL"
-          detail: jackal.epoch
-          meta: root.metaText
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-          iconOpacity: root.affirmative ? 1.0 : 0.65
-          iconComponent: Component {
-            Text {
-              text: Model.stateGlyph(root.evidenceState)
-              color: root.stateColor
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.display
-            }
-          }
-
-          trailingControl: Component {
-            PanelActionButton {
-              iconText: Model.GLYPH.refresh
-              tooltipText: "Run a function probe now"
-              foreground: hero.foreground
-              fontFamily: hero.fontFamily
-              hasCursor: header.ringVisible
-              enabled: !jackal.busy
-              onHovered: function(on) { if (on) header.focusHero() }
-              onClicked: jackal.refresh()
-            }
-          }
-        }
-      }
-
-      // ---- Three-column cockpit deck ---------------------------------------
-      RowLayout {
-        id: deck
-        anchors.left: parent.left
-        anchors.leftMargin: Style.space(9)
-        anchors.right: parent.right
-        anchors.rightMargin: Style.space(3)
-        anchors.top: header.bottom
-        anchors.topMargin: Style.space(8)
-        anchors.bottom: footer.top
-        anchors.bottomMargin: Style.space(10)
-        spacing: Style.space(10)
-
-        // -------- Column A · SYSTEMS ---------------------------------------
-        Flickable {
-          id: systemsFlick
-          Layout.preferredWidth: Math.round(deck.width * 0.25)
-          Layout.fillHeight: true
-          contentWidth: width
-          contentHeight: systemsColumn.implicitHeight
-          clip: true
-          pixelAligned: true
-          interactive: contentHeight > height
-          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-          Rectangle {
-            width: systemsFlick.width
-            height: systemsColumn.implicitHeight
-            color: root.panelVoid
-            z: -1
-          }
-
-          Column {
-            id: systemsColumn
-            width: systemsFlick.width
-            spacing: Style.space(9)
-            layer.enabled: true
-            layer.smooth: false
-            layer.mipmap: false
-
-            PanelSectionHeader {
-              text: "SYSTEMS"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Text {
-              width: parent.width
-              text: jackal.actionStatus !== "" ? jackal.actionStatus
-                    : (jackal.lastError !== "" ? jackal.lastError
-                       : Model.stateBlurb(root.evidenceState, jackal.report))
-              color: jackal.lastError !== "" && jackal.actionStatus === "" ? root.urgent : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
-            }
-
-            GridLayout {
-              width: parent.width
-              columns: 1
-              rowSpacing: Style.space(6)
-
-              TelemetryStat {
-                Layout.fillWidth: true
-                label: "DOCTOR VERDICT"
-                value: jackal.verdict !== "" ? jackal.verdict : "—"
-                tone: root.stateColor
-              }
-              TelemetryStat {
-                Layout.fillWidth: true
-                label: "IDENTITY MATCH"
-                value: jackal.report ? (jackal.identityMatch ? "yes" : "no") : "—"
-                tone: jackal.report && jackal.identityMatch ? root.signal : root.dim
-              }
-              TelemetryStat {
-                Layout.fillWidth: true
-                label: "RUNTIME VERIFY"
-                value: jackal.verifyText !== "" ? jackal.verifyText : "not run this session"
-                tone: jackal.verifyText !== "" ? root.telemetry : root.dim
-              }
-              TelemetryStat {
-                Layout.fillWidth: true
-                label: "Z3 / Anubis compiler"
-                value: jackal.report
-                       ? (jackal.z3Present ? "present" : "absent") + " / " + (jackal.anubisPresent ? "present" : "absent")
-                       : "—"
-                tone: jackal.report && jackal.z3Present && jackal.anubisPresent ? root.signal : root.dim
+            iconComponent: Component {
+              Text {
+                textFormat: Text.PlainText
+                text: Model.stateGlyph(root.evidenceState)
+                color: root.stateColor
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.display
               }
             }
 
-            PanelSeparator { foreground: root.telemetry }
-
-            PanelSectionHeader {
-              text: "ONE ENGINE — EXPANDED CODEX SURFACE"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Text {
-              width: parent.width
-              text: "THOTH lives inside JACKAL as its measurement and provenance subsystem. "
-                    + "The current Codex package joins the sealed runtime, THOTH, the "
-                    + "CAS / graph / nonlinear-certificate layer, linked STEM workflows, "
-                    + "certified number theory, and engineering models behind one "
-                    + "identity-gated server."
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
-            }
-
-            GridLayout {
-              width: parent.width
-              columns: 1
-              rowSpacing: Style.space(6)
-
-              TelemetryStat { Layout.fillWidth: true; label: "UNIFIED SURFACE"; value: "74 tools"; tone: root.reentry }
-              TelemetryStat { Layout.fillWidth: true; label: "SEALED RUNTIME"; value: "41 evidence tools"; tone: root.signal }
-              TelemetryStat { Layout.fillWidth: true; label: "INTEGRATED THOTH"; value: "7 measurement / provenance tools"; tone: root.signal }
-              TelemetryStat { Layout.fillWidth: true; label: "CAS + GRAPH + CERT"; value: "3 advanced tools"; tone: root.telemetry }
-              TelemetryStat { Layout.fillWidth: true; label: "STEM WORKFLOWS"; value: "7 linked engineering tools"; tone: root.telemetry }
-              TelemetryStat { Layout.fillWidth: true; label: "NUMBER THEORY"; value: "10 certified Diophantine tools"; tone: root.signal }
-              TelemetryStat { Layout.fillWidth: true; label: "ENGINEERING"; value: "6 certified STEM models"; tone: root.signal }
-            }
-
-            PanelSeparator { foreground: root.foreground }
-
-            // ---- The operator's lever: which tools a profile exposes -------
-            Column {
-              width: parent.width
-              spacing: Style.space(5)
-
-              PanelSectionHeader {
-                text: jackal.declaredToolCount > 0
-                      ? "AGENT SURFACE — " + jackal.declaredToolCount + " TOOLS DECLARED"
-                      : "AGENT SURFACE"
+            trailingControl: Component {
+              Button {
+                iconText: Model.GLYPH.cockpit
+                tooltipText: "Open the cockpit"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
+                iconSize: Style.font.title
+                horizontalPadding: Style.space(6)
+                verticalPadding: Style.space(3)
+                bordered: true
+                onClicked: root.openCockpit("{}")
               }
+            }
+          }
 
+          // The one sentence for the state, in JACKAL's vocabulary. Only shown
+          // when the glyph alone would leave a question open.
+          Text {
+            visible: !root.affirmative
+            width: parent.width
+            textFormat: Text.PlainText
+            text: Model.stateBlurb(root.evidenceState, jackal.report)
+            color: root.alarming ? root.urgent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          // ---------- Activity ----------
+          PanelSeparator { foreground: root.foreground }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Item {
+              width: parent.width
+              implicitHeight: activityHeader.implicitHeight
+
+              PanelSectionHeader {
+                id: activityHeader
+                text: "ACTIVITY · LAST " + Model.windowLabel(root.windowMs).toUpperCase()
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
               Text {
-                width: parent.width
-                text: "Widening a profile is an explicit operator act, never a fallback."
+                textFormat: Text.PlainText
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: "recall, not evidence"
                 color: root.faint
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
-
-              Text {
-                visible: jackal.profileRows.length === 0
-                width: parent.width
-                text: jackal.epoch === "" ? "No runtime epoch established." : "Reading the declared surface…"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                horizontalAlignment: Text.AlignHCenter
-              }
-
-              Column {
-                width: parent.width
-                spacing: Style.space(2)
-
-                Repeater {
-                  model: jackal.profileRows
-                  ProfileRow {
-                    required property var modelData
-                    width: parent ? parent.width : 0
-                    row: modelData
-                  }
-                }
               }
             }
 
-            PanelSeparator { foreground: root.foreground }
-
-            DigestRow {
+            JkTimeline {
               width: parent.width
-              visible: jackal.packageSha !== ""
-              caption: "Package digest"
-              digest: jackal.packageSha
-              description: "package digest"
+              height: Style.space(72)
+              series: root.activity
+              foreground: root.foreground
+              accent: root.accent
+              urgent: root.urgent
+              fontFamily: root.fontFamily
             }
 
-            DigestRow {
+            Row {
               width: parent.width
-              visible: jackal.catalogSha !== ""
-              caption: "Tool catalog digest"
-              digest: jackal.catalogSha
-              description: "catalog digest"
-            }
-          }
-        }
+              spacing: Style.space(14)
 
-        // -------- Column B · OPERATIONS ------------------------------------
-        Flickable {
-          id: panelFlick
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          contentWidth: width
-          contentHeight: column.implicitHeight
-          clip: true
-          // Whole-pixel scroll offsets: fractional offsets resample glyph
-          // pixels, producing visible shimmer on this high-contrast HUD palette.
-          pixelAligned: true
-          interactive: contentHeight > height
-          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-          Rectangle {
-            id: readingPlaneBackground
-            width: panelFlick.width
-            height: column.implicitHeight
-            color: root.panelVoid
-            z: -1
-          }
-
-          Column {
-            id: column
-            width: panelFlick.width
-            spacing: Style.space(11)
-            // Render the complete reading surface as one opaque device-pixel
-            // layer. Text no longer re-composites independently against moving
-            // translucent decoration while the viewport scrolls.
-            layer.enabled: true
-            layer.smooth: false
-            layer.mipmap: false
-
-            // ---- Live graph deck: sweeps through the sealed evaluator ------
-            Column {
-              width: parent.width
-              spacing: Style.space(6)
-
-              Rectangle {
-                width: parent.width
-                height: graphDeck.implicitHeight + Style.space(20)
-                radius: Style.cornerRadius
-                color: root.panelSurface
-                border.color: Qt.alpha(root.reentry, 0.44)
-                border.width: 1
-                clip: true
-
-                Rectangle {
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.top: parent.top
-                  height: Style.space(2)
-                  gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: root.reentry }
-                    GradientStop { position: 0.34; color: root.reentry }
-                    GradientStop { position: 0.62; color: root.telemetry }
-                    GradientStop { position: 1.0; color: root.reentry }
-                  }
-                }
-
-                Column {
-                  id: graphDeck
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.top: parent.top
-                  anchors.margins: Style.space(10)
-                  spacing: Style.space(7)
-
-                  RowLayout {
-                    width: parent.width
-                    spacing: Style.space(8)
-
-                    Text {
-                      text: "GRAPH DECK — LIVE SWEEP"
-                      color: root.telemetry
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                      font.bold: true
-                      font.letterSpacing: 1.4
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    StatusPill {
-                      label: jackal.graphBusy ? "SWEEPING…" : "SEALED EVALUATOR · f64"
-                      tone: jackal.graphBusy ? root.reentry : root.signal
-                    }
-                  }
-
-                  RowLayout {
-                    width: parent.width
-                    spacing: Style.space(6)
-
-                    TextField {
-                      id: graphExpressionField
-                      Layout.fillWidth: true
-                      text: jackal.graphExpression
-                      foreground: root.foreground
-                      accent: root.reentry
-                      font.pixelSize: Style.font.bodySmall
-                      placeholderText: "f(x) — the engine's eval fragment"
-                      onAccepted: root.plotFromFields()
-                    }
-
-                    TextField {
-                      id: graphXMinField
-                      Layout.preferredWidth: Style.space(64)
-                      text: jackal.graphXMin
-                      foreground: root.foreground
-                      accent: root.reentry
-                      font.pixelSize: Style.font.bodySmall
-                      horizontalAlignment: TextInput.AlignHCenter
-                      onAccepted: root.plotFromFields()
-                    }
-
-                    TextField {
-                      id: graphXMaxField
-                      Layout.preferredWidth: Style.space(64)
-                      text: jackal.graphXMax
-                      foreground: root.foreground
-                      accent: root.reentry
-                      font.pixelSize: Style.font.bodySmall
-                      horizontalAlignment: TextInput.AlignHCenter
-                      onAccepted: root.plotFromFields()
-                    }
-
-                    PanelActionButton {
-                      iconText: Model.GLYPH.refresh
-                      tooltipText: "Sweep f(x) through the pinned evaluator"
-                      foreground: root.foreground
-                      fontFamily: root.fontFamily
-                      enabled: !jackal.graphBusy
-                      onClicked: root.plotFromFields()
-                    }
-                  }
-
-                  Flow {
-                    width: parent.width
-                    spacing: Style.space(4)
-
-                    Repeater {
-                      model: root.graphPresets
-                      Rectangle {
-                        required property var modelData
-                        implicitWidth: presetText.implicitWidth + Style.space(12)
-                        implicitHeight: presetText.implicitHeight + Style.space(5)
-                        radius: implicitHeight / 2
-                        color: Qt.alpha(root.telemetry, presetArea.containsMouse ? 0.2 : 0.08)
-                        border.color: Qt.alpha(root.telemetry, 0.5)
-                        border.width: 1
-
-                        Text {
-                          id: presetText
-                          anchors.centerIn: parent
-                          text: parent.modelData.label
-                          color: root.telemetry
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
-                        }
-
-                        MouseArea {
-                          id: presetArea
-                          anchors.fill: parent
-                          hoverEnabled: true
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: root.plotPreset(parent.modelData)
-                        }
-                      }
-                    }
-                  }
-
-                  Rectangle {
-                    width: parent.width
-                    height: Math.round(width * 0.52)
-                    radius: Style.cornerRadius
-                    color: "#0a0b0d"
-                    border.color: Qt.alpha(root.telemetry, 0.22)
-                    border.width: 1
-                    clip: true
-
-                    Image {
-                      id: graphPreview
-                      anchors.fill: parent
-                      anchors.margins: Style.space(4)
-                      visible: jackal.graphPoints.length === 0
-                      opacity: 0.42
-                      source: Qt.resolvedUrl("assets/jackal-thoth-hellgate-graph.png")
-                      fillMode: Image.PreserveAspectFit
-                      asynchronous: true
-                      smooth: true
-                      mipmap: true
-                    }
-
-                    Text {
-                      visible: jackal.graphPoints.length === 0 && !jackal.graphBusy
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      anchors.bottom: parent.bottom
-                      anchors.bottomMargin: Style.space(6)
-                      text: "reference render — plot to run a live sweep"
-                      color: root.dim
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
-
-                    Canvas {
-                      id: graphCanvas
-                      anchors.fill: parent
-                      anchors.margins: Style.space(6)
-                      visible: jackal.graphPoints.length > 0
-
-                      readonly property var points: jackal.graphPoints
-                      property real hoverX: -1
-                      property bool hovering: false
-
-                      onPointsChanged: { hovering = false; requestPaint() }
-                      onWidthChanged: requestPaint()
-                      onHeightChanged: requestPaint()
-
-                      MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                        onPositionChanged: function(mouse) {
-                          graphCanvas.hoverX = mouse.x
-                          graphCanvas.hovering = true
-                          graphCanvas.requestPaint()
-                        }
-                        onExited: {
-                          graphCanvas.hovering = false
-                          graphCanvas.requestPaint()
-                        }
-                      }
-
-                      onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-                        var pts = points
-                        if (!pts || pts.length === 0) return
-                        var w = width, h = height
-                        var tickFont = Style.font.body + "px " + root.fontFamily
-                        var extremes = Model.graphExtremes(pts)
-                        if (extremes.max === null) {
-                          ctx.fillStyle = Qt.alpha(root.telemetry, 0.85)
-                          ctx.font = Style.font.body + "px " + root.fontFamily
-                          var refusedText = "every sample refused — the curve is honest about that"
-                          ctx.fillText(refusedText, (w - ctx.measureText(refusedText).width) / 2, h / 2)
-                          return
-                        }
-                        var xLo = pts[0].x, xHi = pts[pts.length - 1].x
-                        var yLo = extremes.min.y, yHi = extremes.max.y
-                        if (yHi - yLo < 1e-12) { yHi += 1; yLo -= 1 }
-                        var pad = (yHi - yLo) * 0.08
-                        yLo -= pad; yHi += pad
-
-                        // Instrument ticks first: the left gutter is sized by
-                        // the widest label it must hold, so numbers are never
-                        // squeezed against the curve.
-                        var xTicks = Model.graphTicks(xLo, xHi, 7)
-                        var yTicks = Model.graphTicks(yLo, yHi, 5)
-                        ctx.font = tickFont
-                        var yLabelWidth = 0
-                        for (var yl = 0; yl < yTicks.ticks.length; yl++) {
-                          var candidate = ctx.measureText(Model.graphTickLabel(yTicks.ticks[yl], yTicks.step)).width
-                          if (candidate > yLabelWidth) yLabelWidth = candidate
-                        }
-                        var gutterL = Math.ceil(yLabelWidth) + 14
-                        var gutterB = Style.font.body + 12
-                        var top = 10, right = 12
-                        var plotW = w - gutterL - right
-                        var plotH = h - top - gutterB
-                        if (plotW < 60 || plotH < 40) return
-                        function px(x) { return gutterL + (x - xLo) / (xHi - xLo) * plotW }
-                        function py(y) { return top + plotH - (y - yLo) / (yHi - yLo) * plotH }
-
-                        // Plot backdrop and frame.
-                        ctx.fillStyle = "#0d0e11"
-                        ctx.fillRect(gutterL, top, plotW, plotH)
-
-                        ctx.save()
-                        ctx.beginPath()
-                        ctx.rect(gutterL, top, plotW, plotH)
-                        ctx.clip()
-
-                        // Refused ground is shaded before anything is drawn
-                        // over it: the band owns exactly the refused samples.
-                        var runs = Model.graphRefusedRuns(pts)
-                        ctx.fillStyle = Qt.alpha(root.reentry, 0.08)
-                        for (var r = 0; r < runs.length; r++) {
-                          var bx0 = px(runs[r].x0), bx1 = px(runs[r].x1)
-                          ctx.fillRect(bx0, top, bx1 - bx0, plotH)
-                        }
-
-                        // Gridlines land on named ticks only.
-                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.09)
-                        ctx.lineWidth = 1
-                        for (var gx = 0; gx < xTicks.ticks.length; gx++) {
-                          var gxp = Math.round(px(xTicks.ticks[gx])) + 0.5
-                          ctx.beginPath(); ctx.moveTo(gxp, top); ctx.lineTo(gxp, top + plotH); ctx.stroke()
-                        }
-                        for (var gy = 0; gy < yTicks.ticks.length; gy++) {
-                          var gyp = Math.round(py(yTicks.ticks[gy])) + 0.5
-                          ctx.beginPath(); ctx.moveTo(gutterL, gyp); ctx.lineTo(gutterL + plotW, gyp); ctx.stroke()
-                        }
-
-                        // Zero axes read stronger than the grid.
-                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.42)
-                        if (xLo < 0 && xHi > 0) {
-                          var zx = Math.round(px(0)) + 0.5
-                          ctx.beginPath(); ctx.moveTo(zx, top); ctx.lineTo(zx, top + plotH); ctx.stroke()
-                        }
-                        if (yLo < 0 && yHi > 0) {
-                          var zy = Math.round(py(0)) + 0.5
-                          ctx.beginPath(); ctx.moveTo(gutterL, zy); ctx.lineTo(gutterL + plotW, zy); ctx.stroke()
-                        }
-
-                        // The sweep. A refused sample lifts the pen: a break,
-                        // never an interpolated bridge over a refusal. A soft
-                        // under-glow then the core stroke keeps the trace
-                        // readable against the grid without inventing weight.
-                        ctx.lineJoin = "round"
-                        ctx.lineCap = "round"
-                        for (var pass = 0; pass < 2; pass++) {
-                          ctx.strokeStyle = pass === 0 ? Qt.alpha(root.reentry, 0.22) : root.reentry
-                          ctx.lineWidth = pass === 0 ? 5 : 2.2
-                          ctx.beginPath()
-                          var drawing = false
-                          for (var p = 0; p < pts.length; p++) {
-                            if (pts[p].y === null) { drawing = false; continue }
-                            var cx = px(pts[p].x), cy = py(pts[p].y)
-                            if (!drawing) { ctx.moveTo(cx, cy); drawing = true }
-                            else ctx.lineTo(cx, cy)
-                          }
-                          ctx.stroke()
-                        }
-
-                        // Where the pen lifted, say so with endpoint dots.
-                        ctx.fillStyle = root.reentry
-                        for (var e = 0; e < pts.length; e++) {
-                          if (pts[e].y === null) continue
-                          var prevRefused = e > 0 && pts[e - 1].y === null
-                          var nextRefused = e + 1 < pts.length && pts[e + 1].y === null
-                          if (!prevRefused && !nextRefused) continue
-                          ctx.beginPath()
-                          ctx.arc(px(pts[e].x), py(pts[e].y), 2.6, 0, Math.PI * 2)
-                          ctx.fill()
-                        }
-
-                        // Observed extremes, marked where they actually sit —
-                        // evaluator samples, never window padding.
-                        function markExtreme(pointAt, word) {
-                          var mx = px(pointAt.x), my = py(pointAt.y)
-                          ctx.fillStyle = root.signal
-                          ctx.beginPath(); ctx.arc(mx, my, 2.8, 0, Math.PI * 2); ctx.fill()
-                          ctx.font = tickFont
-                          var labelText = word + " " + Model.graphTickLabel(pointAt.y, yTicks.step / 1000)
-                          var tw = ctx.measureText(labelText).width
-                          var lx = Math.max(gutterL + 4, Math.min(mx - tw / 2, gutterL + plotW - tw - 4))
-                          var ly = word === "max" ? Math.max(top + Style.font.body + 2, my - 8)
-                                                  : Math.min(top + plotH - 5, my + Style.font.body + 6)
-                          ctx.fillStyle = Qt.alpha(root.signal, 0.92)
-                          ctx.fillText(labelText, lx, ly)
-                        }
-                        markExtreme(extremes.max, "max")
-                        if (extremes.min.y !== extremes.max.y) markExtreme(extremes.min, "min")
-
-                        // Hover: the nearest evaluator sample, named as one.
-                        // The crosshair never interpolates — between samples
-                        // there is no claim.
-                        if (hovering && hoverX >= gutterL && hoverX <= gutterL + plotW) {
-                          var idx = Math.round((hoverX - gutterL) / plotW * (pts.length - 1))
-                          idx = Math.max(0, Math.min(pts.length - 1, idx))
-                          var sample = pts[idx]
-                          var hx = Math.round(px(sample.x)) + 0.5
-                          ctx.strokeStyle = Qt.alpha(root.signal, 0.35)
-                          ctx.lineWidth = 1
-                          ctx.beginPath(); ctx.moveTo(hx, top); ctx.lineTo(hx, top + plotH); ctx.stroke()
-                          if (sample.y !== null) {
-                            ctx.fillStyle = root.signal
-                            ctx.beginPath(); ctx.arc(px(sample.x), py(sample.y), 3.4, 0, Math.PI * 2); ctx.fill()
-                          }
-                          var readout = Model.graphHoverText(sample, idx, pts.length)
-                          ctx.font = tickFont
-                          var rw = ctx.measureText(readout).width
-                          var boxW = rw + 16, boxH = Style.font.body + 12
-                          var boxX = gutterL + plotW - boxW - 6, boxY = top + 6
-                          ctx.fillStyle = Qt.alpha("#0a0b0d", 0.9)
-                          ctx.fillRect(boxX, boxY, boxW, boxH)
-                          ctx.strokeStyle = Qt.alpha(root.telemetry, 0.35)
-                          ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1)
-                          ctx.fillStyle = root.signal
-                          ctx.fillText(readout, boxX + 8, boxY + boxH - 8)
-                        }
-
-                        ctx.restore()
-
-                        // Frame and tick labels live outside the clip so the
-                        // gutters stay clean.
-                        ctx.strokeStyle = Qt.alpha(root.telemetry, 0.2)
-                        ctx.lineWidth = 1
-                        ctx.strokeRect(gutterL + 0.5, top + 0.5, plotW - 1, plotH - 1)
-
-                        ctx.font = tickFont
-                        ctx.fillStyle = Qt.alpha(root.telemetry, 0.85)
-                        for (var ylab = 0; ylab < yTicks.ticks.length; ylab++) {
-                          var yv = yTicks.ticks[ylab]
-                          var yText = Model.graphTickLabel(yv, yTicks.step)
-                          var yPix = py(yv)
-                          if (yPix < top + 4 || yPix > top + plotH - 2) continue
-                          ctx.fillText(yText, gutterL - 8 - ctx.measureText(yText).width, yPix + 4)
-                        }
-                        var lastLabelEnd = -Infinity
-                        for (var xlab = 0; xlab < xTicks.ticks.length; xlab++) {
-                          var xv = xTicks.ticks[xlab]
-                          var xText = Model.graphTickLabel(xv, xTicks.step)
-                          var xw = ctx.measureText(xText).width
-                          var xPix = px(xv) - xw / 2
-                          if (xPix < lastLabelEnd + 10) continue
-                          if (xPix + xw > w - 2) continue
-                          ctx.fillText(xText, xPix, h - 5)
-                          lastLabelEnd = xPix + xw
-                        }
-                      }
-                    }
-                  }
-
+              Repeater {
+                model: [
+                  { label: "calls", value: String(root.summary.total) },
+                  { label: "refused", value: String(root.summary.refused), alarm: root.summary.refused > 0 },
+                  { label: "median", value: Model.formatMs(root.summary.medianMs) },
+                  { label: "tools", value: String(root.summary.tools) }
+                ]
+                delegate: Column {
+                  required property var modelData
+                  spacing: 0
                   Text {
-                    width: parent.width
-                    visible: jackal.graphError !== "" || jackal.graphMeta !== ""
-                    text: jackal.graphError !== "" ? jackal.graphError
-                          : "f(x) = " + jackal.graphExpression + "   ·   " + jackal.graphMeta
-                          + "   ·   window [" + jackal.graphXMin + ", " + jackal.graphXMax + "]"
-                    color: jackal.graphError !== "" ? root.urgent : root.telemetry
+                    textFormat: Text.PlainText
+                    text: modelData.value
+                    color: modelData.alarm ? root.urgent : root.foreground
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                    wrapMode: Text.WordWrap
+                    font.pixelSize: Style.font.title
+                    font.bold: true
                   }
-                }
-              }
-
-              Text {
-                width: parent.width
-                text: "Live sweep · status=estimated visualization. Exact rational x grid; "
-                      + "f64 samples from the runtime's own evaluator; a refused sample "
-                      + "breaks the curve; pixels are not proof."
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
-              }
-            }
-
-            PanelSeparator { foreground: root.foreground }
-
-            // ---- Verification: the front door, exercised rather than described
-            //
-            // First among the acting sections. In the `core` profile an agent
-            // must verify before it can speak, and a widget that rendered that
-            // rule while never keeping it would be describing a discipline it
-            // does not hold.
-            Column {
-              width: parent.width
-              spacing: Style.space(5)
-
-              PanelSectionHeader {
-                text: "VERIFY — CLIPBOARD ARTIFACT"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-
-              Text {
-                width: parent.width
-                text: "The artifact comes from the clipboard; the authorization comes from "
-                      + "your expectations file. Expectations taken from the artifact would "
-                      + "make every check pass and mean nothing."
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
-
-              Text {
-                visible: jackal.verifyResult === null
-                width: parent.width
-                text: jackal.verifyBusy ? "Verifying…"
-                      : "Nothing verified in this session.  press p"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                horizontalAlignment: Text.AlignHCenter
-              }
-
-              VerdictBlock {
-                width: parent.width
-                visible: jackal.verifyResult !== null
-                result: jackal.verifyResult
-              }
-            }
-
-            PanelSeparator { foreground: root.foreground }
-
-            // ---- Capability: what actually stands behind each answer -------
-            Column {
-              width: parent.width
-              spacing: Style.space(5)
-
-              PanelSectionHeader {
-                text: root.registerCount > 0
-                      ? "EVIDENCE REGISTER — " + root.registerCount + " FAMILIES"
-                      : "EVIDENCE REGISTER"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-
-              Text {
-                width: parent.width
-                text: "Assurance is how well a fact is established; consequence is what may be "
-                      + "decided on it. Neither raises the other. " + Model.GLYPH.capped
-                      + " marks a ceiling held below the assurance — proved more than it "
-                      + "may decide. That is the bound holding, not a fault."
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
-
-              Text {
-                visible: root.registerCount === 0
-                width: parent.width
-                text: jackal.epoch === "" ? "No runtime epoch established." : "Reading the capability inventory…"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                horizontalAlignment: Text.AlignHCenter
-              }
-
-              Column {
-                id: registerColumn
-                visible: root.registerCount > 0
-                width: parent.width
-                spacing: Style.space(2)
-
-                Repeater {
-                  model: jackal.familyRows
-                  RegisterRow {
-                    required property var modelData
-                    required property int index
-                    width: registerColumn.width
-                    row: modelData
-                    rowIndex: index
+                  Text {
+                    textFormat: Text.PlainText
+                    text: modelData.label.toUpperCase()
+                    color: root.faint
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.letterSpacing: 1.0
                   }
                 }
               }
             }
           }
-        }
 
-        // -------- Column C · TELEMETRY -------------------------------------
-        Flickable {
-          id: telemetryFlick
-          Layout.preferredWidth: Math.round(deck.width * 0.30)
-          Layout.fillHeight: true
-          contentWidth: width
-          contentHeight: telemetryColumn.implicitHeight
-          clip: true
-          pixelAligned: true
-          interactive: contentHeight > height
-          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-          Rectangle {
-            width: telemetryFlick.width
-            height: telemetryColumn.implicitHeight
-            color: root.panelVoid
-            z: -1
-          }
+          // ---------- Latest answer ----------
+          PanelSeparator { foreground: root.foreground }
 
           Column {
-            id: telemetryColumn
-            width: telemetryFlick.width
-            spacing: Style.space(9)
-            layer.enabled: true
-            layer.smooth: false
-            layer.mipmap: false
+            width: parent.width
+            spacing: Style.space(6)
 
-            LatestAnswerCard {
-              width: parent.width
-              row: jackal.results.length > 0 ? jackal.results[0] : null
+            PanelSectionHeader {
+              text: "LATEST ANSWER"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
             }
 
-            // ---- Latest results: what this machine actually computed -------
-            //
-            // Work done through the MCP surface, not by this widget. Every field
-            // is JACKAL's own: the status class it returned, and either its own
-            // output line or, for a refusal, the reason it named. Nothing here
-            // re-ranks or softens a class.
-            Column {
+            Text {
+              visible: !root.newest
               width: parent.width
-              spacing: Style.space(5)
+              textFormat: Text.PlainText
+              text: "No recorded answer yet. Rows appear here as the kernel is called."
+              color: root.faint
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
 
-              PanelSectionHeader {
-                text: jackal.results.length > 0
-                      ? "LATEST RESULTS — " + Model.pluralAnswers(jackal.results.length)
-                      : "LATEST RESULTS"
+            JkResultRow {
+              id: newestRow
+              visible: !!root.newest
+              width: parent.width
+              row: root.newest
+              nowMs: jackal.nowMs
+              foreground: root.foreground
+              accentColor: root.accent
+              urgent: root.urgent
+              fontFamily: root.fontFamily
+              fresh: root.newestFresh
+              hasCursor: root.cursorActive && root.focusSection === "feed" && root.selectedIndex === 0
+              onPointerMoved: function(x, y) { root.feedPointer(0, newestRow, x, y) }
+              onClicked: root.openCockpit(JSON.stringify({ section: "ledger" }))
+            }
+          }
+
+          // ---------- Recent ----------
+          Column {
+            visible: root.recent.length > 0
+            width: parent.width
+            spacing: Style.space(2)
+
+            PanelSectionHeader {
+              text: "RECENT"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              bottomPadding: Style.space(4)
+            }
+
+            Repeater {
+              model: root.recent
+              delegate: JkResultRow {
+                id: recentRow
+                required property var modelData
+                required property int index
+                width: parent.width
+                row: modelData
+                nowMs: jackal.nowMs
+                compact: true
+                foreground: root.foreground
+                accentColor: root.accent
+                urgent: root.urgent
+                fontFamily: root.fontFamily
+                hasCursor: root.cursorActive && root.focusSection === "feed"
+                  && root.selectedIndex === index + 1
+                onPointerMoved: function(x, y) { root.feedPointer(recentRow.index + 1, recentRow, x, y) }
+                onClicked: root.openCockpit(JSON.stringify({ section: "ledger" }))
+              }
+            }
+          }
+
+          // ---------- Actions ----------
+          PanelSeparator { foreground: root.foreground }
+
+          Row {
+            id: actionRow
+            width: parent.width
+            spacing: Style.space(6)
+            readonly property real cellWidth: (width - spacing * (root.actions.length - 1)) / root.actions.length
+
+            Repeater {
+              model: root.actions
+              delegate: Button {
+                required property var modelData
+                required property int index
+                width: actionRow.cellWidth
+                text: modelData.label
+                iconText: modelData.icon
+                tooltipText: modelData.hint
+                iconSpinning: modelData.key === "probe" && jackal.busy
+                bordered: true
                 foreground: root.foreground
                 fontFamily: root.fontFamily
-              }
-
-              Text {
-                width: parent.width
-                text: "Recent answers recorded by the configured JACKAL ledger, newest first. The status word is "
-                      + "the class JACKAL returned; a refusal is shown with the reason it named. "
-                      + "This is a local record of calls that already happened — not a "
-                      + "re-verification. It establishes nothing on its own."
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
-
-              Text {
-                visible: jackal.results.length === 0
-                width: parent.width
-                text: "Nothing computed yet."
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                horizontalAlignment: Text.AlignHCenter
-              }
-
-              Column {
-                id: resultColumn
-                visible: jackal.results.length > 0
-                width: parent.width
-                spacing: Style.space(3)
-
-                Repeater {
-                  model: jackal.results
-                  ResultRow {
-                    required property var modelData
-                    width: resultColumn.width
-                    row: modelData
-                  }
-                }
-              }
-            }
-
-            PanelSeparator { foreground: root.foreground }
-
-            // ---- Function: what actually ran here, this session ------------
-            Column {
-              width: parent.width
-              spacing: Style.space(5)
-
-              PanelSectionHeader {
-                text: jackal.probeTotal > 0
-                      ? "SESSION FUNCTION — " + jackal.probePassed + "/" + jackal.probeTotal
-                        + " AT DECLARED CLASS"
-                      : "SESSION FUNCTION"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-
-              Text {
-                width: parent.width
-                text: "One real tool per class, executed here. A declared class is never evidence "
-                      + "that the class executed."
-                color: root.faint
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
-
-              Text {
-                visible: jackal.probeTotal === 0
-                width: parent.width
-                text: "Nothing executed yet."
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                horizontalAlignment: Text.AlignHCenter
-              }
-
-              Column {
-                id: probeColumn
-                visible: jackal.probeTotal > 0
-                width: parent.width
-                spacing: Style.space(1)
-
-                Repeater {
-                  model: jackal.probeRows
-                  ProbeRow {
-                    required property var modelData
-                    width: probeColumn.width
-                    row: modelData
-                  }
-                }
+                fontSize: Style.font.bodySmall
+                iconSize: Style.font.body
+                verticalPadding: Style.spacing.controlPaddingY + Style.space(1)
+                hasCursor: root.cursorActive && root.focusSection === "actions"
+                  && root.actionIndex === index
+                onHovered: function(on) { if (on) root.setActionCursor(index) }
+                onClicked: root.runAction(modelData.key)
               }
             }
           }
-        }
-      }
-
-      // Pinned: the two laws and the governing non-claim never scroll away.
-      Column {
-        id: footer
-        anchors.left: parent.left
-        anchors.leftMargin: Style.space(9)
-        anchors.right: parent.right
-        anchors.rightMargin: Style.space(3)
-        anchors.bottom: parent.bottom
-        spacing: Style.space(3)
-
-        PanelSeparator { foreground: root.foreground }
-
-        Item { width: 1; height: Style.space(4) }
-
-        // Observed from these exact inventory bytes, not asserted as a standing
-        // law — the difference matters on a surface whose whole point is that
-        // claims are only as strong as what backs them.
-        //
-        // Three states, never two. Silence means the inventory has not been
-        // read, so nothing is established either way. A surface where the law
-        // has STOPPED holding says which tool broke it, in the alarm colour: a
-        // law that quietly disappears when it fails is worse than no law, and
-        // is exactly the silent downgrade this project refuses.
-        Text {
-          visible: jackal.inventory !== null
-          width: parent.width
-          text: jackal.everyToolDeclaresRefused
-                ? "refused is a declared outcome of all " + jackal.declaredToolCount
-                  + " tools. A ceiling is an upper bound, never a grant."
-                : jackal.toolsWithoutRefused.length + " of " + jackal.declaredToolCount
-                  + " tools do NOT declare refused: "
-                  + jackal.toolsWithoutRefused.join(", ")
-          color: jackal.everyToolDeclaresRefused ? root.dim : root.urgent
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
-
-        Item { visible: jackal.inventory !== null; width: 1; height: Style.space(3) }
-
-        Text {
-          visible: jackal.nonClaim !== ""
-          width: parent.width
-          text: "NON-CLAIM"
-          color: root.telemetry
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          font.letterSpacing: 1.2
-        }
-
-        Text {
-          visible: jackal.nonClaim !== ""
-          width: parent.width
-          text: jackal.nonClaim
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          wrapMode: Text.WordWrap
-        }
-
-        Item { width: 1; height: Style.space(2) }
-
-        Text {
-          width: parent.width
-          text: "p verify clipboard · r probe · v runtime · c digest · n non-claim · g graph"
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          horizontalAlignment: Text.AlignHCenter
-          elide: Text.ElideRight
-        }
-      }
-    }
-  }
-
-  // A compact command strip keeps the newest recorded answer above the fold.
-  // It is intentionally labelled LOCAL RECALL: the ledger is a convenience
-  // file, not evidence, and this card never upgrades or reclassifies a result.
-  component LatestAnswerCard: Rectangle {
-    id: latestCard
-    property var row: null
-
-    readonly property color tone: row && row.refused ? root.dim : root.telemetry
-
-    implicitHeight: latestContent.implicitHeight + Style.space(22)
-    radius: Style.cornerRadius
-    color: root.panelSurface
-    border.color: Qt.alpha(latestCard.tone, 0.52)
-    border.width: 1
-    clip: true
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.bottom: parent.bottom
-      width: Style.space(3)
-      color: latestCard.tone
-    }
-
-    Column {
-      id: latestContent
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(13)
-      anchors.right: parent.right
-      anchors.rightMargin: Style.space(11)
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.space(4)
-
-      RowLayout {
-        width: parent.width
-        spacing: Style.space(8)
-
-        Text {
-          text: "LATEST ANSWER  /  LOCAL RECALL"
-          color: root.telemetry
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          font.letterSpacing: 1.4
-        }
-
-        Item { Layout.fillWidth: true }
-
-        StatusPill {
-          visible: latestCard.row !== null
-          label: latestCard.row ? latestCard.row.status : ""
-          tone: latestCard.tone
-        }
-      }
-
-      Text {
-        width: parent.width
-        text: latestCard.row ? latestCard.row.tool : "No recorded answer yet"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        font.bold: true
-        elide: Text.ElideRight
-      }
-
-      Text {
-        visible: latestCard.row ? latestCard.row.request !== "" : false
-        width: parent.width
-        text: latestCard.row ? latestCard.row.request : ""
-        color: root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
-      }
-
-      Text {
-        width: parent.width
-        text: latestCard.row
-              ? (latestCard.row.detail !== "" ? latestCard.row.detail : "No result detail recorded.")
-              : "The newest ledger entry will appear here without reopening the dropdown."
-        color: latestCard.row && latestCard.row.refused ? root.dim : root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        wrapMode: Text.WordWrap
-        maximumLineCount: 2
-        elide: Text.ElideRight
-      }
-
-      RowLayout {
-        visible: latestCard.row !== null
-        width: parent.width
-        spacing: Style.space(8)
-
-        Text {
-          text: latestCard.row ? Model.ageText(latestCard.row.atMs, jackal.nowMs) : ""
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        Item { Layout.fillWidth: true }
-
-        Text {
-          text: "recall only · not re-verified"
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-      }
-    }
-  }
-
-  component StatusPill: Rectangle {
-    id: statusPill
-    property string label: ""
-    property color tone: root.telemetry
-
-    implicitWidth: pillText.implicitWidth + Style.space(12)
-    implicitHeight: pillText.implicitHeight + Style.space(5)
-    radius: implicitHeight / 2
-    color: Qt.alpha(tone, 0.11)
-    border.color: Qt.alpha(tone, 0.62)
-    border.width: 1
-
-    Text {
-      id: pillText
-      anchors.centerIn: parent
-      text: statusPill.label
-      color: statusPill.tone
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-    }
-  }
-
-  component TelemetryStat: Rectangle {
-    id: stat
-    property string label: ""
-    property string value: ""
-    property color tone: root.telemetry
-
-    implicitWidth: Style.space(160)
-    implicitHeight: statContent.implicitHeight + Style.space(14)
-    radius: Style.cornerRadius
-    color: root.panelSurface
-    border.color: Qt.alpha(stat.tone, 0.28)
-    border.width: 1
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      width: Style.space(28)
-      height: 1
-      color: stat.tone
-      opacity: 0.78
-    }
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      width: 1
-      height: Style.space(8)
-      color: stat.tone
-      opacity: 0.78
-    }
-
-    Column {
-      id: statContent
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(8)
-      anchors.right: parent.right
-      anchors.rightMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.space(2)
-
-      Text {
-        width: parent.width
-        text: stat.label
-        color: stat.tone
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        font.bold: true
-        font.letterSpacing: 1.0
-        elide: Text.ElideRight
-      }
-
-      Text {
-        width: parent.width
-        text: stat.value
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        wrapMode: Text.WordWrap
-        maximumLineCount: 2
-        elide: Text.ElideRight
-      }
-    }
-  }
-
-  // One verification verdict, verbatim.
-  //
-  // `raised_by` is shown because it is load-bearing: a refusal from this widget
-  // means the artifact never reached a front door, and a refusal from JACKAL
-  // means the front door looked and said no. Rendering those the same way would
-  // let a routing failure read as a verification result.
-  //
-  // The authorization is shown because an authorization the operator cannot see
-  // is one they cannot audit — and because "it refused" is only answerable next
-  // to "here is what you authorized".
-  component VerdictBlock: Column {
-    id: verdict
-    property var result: null
-
-    readonly property bool affirmative: Model.verifyIsAffirmative(result)
-    readonly property bool alarming: Model.verifyIsAlarming(result)
-    readonly property bool refusal: Model.verifyIsRefusal(result)
-    readonly property color tone: alarming ? root.urgent
-                                           : (affirmative ? root.foreground : root.dim)
-
-    spacing: Style.space(3)
-
-    RowLayout {
-      width: parent.width
-      spacing: Style.space(8)
-
-      Text {
-        text: verdict.affirmative ? Model.GLYPH.pass : Model.GLYPH.fail
-        color: verdict.tone
-        opacity: verdict.affirmative ? 0.85 : 1.0
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-      }
-
-      Text {
-        text: Model.verifyStatusLabel(verdict.result ? verdict.result.status : "")
-        color: verdict.tone
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        font.bold: true
-        font.letterSpacing: 1.0
-      }
-
-      Item { Layout.fillWidth: true }
-
-      Text {
-        text: Model.verifySubject(verdict.result)
-        color: root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideLeft
-        Layout.maximumWidth: parent.width * 0.55
-      }
-    }
-
-    Text {
-      width: parent.width
-      visible: text !== ""
-      text: verdict.result && verdict.result.reason ? verdict.result.reason : ""
-      color: verdict.tone
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      wrapMode: Text.WordWrap
-    }
-
-    Text {
-      width: parent.width
-      visible: text !== ""
-      text: verdict.result && verdict.result.detail ? verdict.result.detail : ""
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      wrapMode: Text.WordWrap
-    }
-
-    Text {
-      width: parent.width
-      visible: verdict.refusal
-      text: Model.verifyRaisedByText(verdict.result)
-      color: root.faint
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      wrapMode: Text.WordWrap
-    }
-
-    Item { width: 1; height: Style.space(2) }
-
-    Text {
-      width: parent.width
-      text: "AUTHORIZED BY YOU"
-      color: Qt.darker(root.foreground, 1.4)
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-      font.letterSpacing: 1.0
-      visible: Model.authorizedRows(verdict.result).length > 0
-    }
-
-    Column {
-      id: authorized
-      width: parent.width
-      spacing: Style.space(1)
-
-      Repeater {
-        model: Model.authorizedRows(verdict.result)
-        Row {
-          required property var modelData
-          width: authorized.width
-          spacing: Style.space(8)
 
           Text {
-            text: modelData.name
-            color: root.foreground
-            opacity: 0.6
+            width: parent.width
+            textFormat: Text.PlainText
+            text: jackal.actionStatus !== ""
+              ? jackal.actionStatus
+              : (jackal.verifyResult
+                 ? "Clipboard artifact: " + Model.verifyStatusLabel(jackal.verifyResult.status).toLowerCase()
+                   + " · " + Model.verifyRaisedByText(jackal.verifyResult)
+                 : "j/k rows · Enter cockpit · r probe · v verify · Esc")
+            color: jackal.verifyResult && Model.verifyIsAlarming(jackal.verifyResult) && jackal.actionStatus === ""
+              ? root.urgent : root.faint
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
-          }
-          Item {
-            width: Math.max(0, authorized.width - parent.children[0].implicitWidth
-                               - parent.children[2].implicitWidth - Style.space(16))
-            height: 1
-          }
-          Text {
-            text: modelData.value
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            elide: Text.ElideRight
+            wrapMode: Text.WordWrap
           }
         }
       }
     }
-
-    Text {
-      width: parent.width
-      visible: verdict.result && verdict.result.reason === "widget-expectations-absent"
-      text: "Write an authorization file at " + jackal.expectationsPath
-            + " — see the plugin README for the template."
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      wrapMode: Text.WordWrap
-    }
-
-    Item { width: 1; height: Style.space(2); visible: reportColumn.children.length > 0 }
-
-    Column {
-      id: reportColumn
-      width: parent.width
-      spacing: 0
-
-      Repeater {
-        model: verdict.result && verdict.result.report ? verdict.result.report : []
-        Text {
-          required property var modelData
-          width: reportColumn.width
-          text: modelData
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WrapAnywhere
-        }
-      }
-    }
-  }
-
-  component DigestRow: CursorSurface {
-    id: digestRow
-    property string caption: ""
-    property string digest: ""
-    property string description: ""
-
-    hasCursor: false
-    foreground: root.foreground
-    implicitHeight: digestContent.implicitHeight + Style.spacing.sm
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: jackal.copyText(digestRow.digest, digestRow.description)
-    }
-
-    RowLayout {
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(8)
-
-      ColumnLayout {
-        id: digestContent
-        Layout.fillWidth: true
-        spacing: Style.space(1)
-
-        Text {
-          Layout.fillWidth: true
-          text: digestRow.caption
-          color: root.foreground
-          opacity: 0.6
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-        }
-
-        Text {
-          Layout.fillWidth: true
-          text: Model.shortHash(digestRow.digest)
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          elide: Text.ElideRight
-        }
-      }
-
-      PanelActionButton {
-        iconText: Model.GLYPH.copy
-        tooltipText: "Copy the full digest"
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-        Layout.alignment: Qt.AlignVCenter
-        onClicked: jackal.copyText(digestRow.digest, digestRow.description)
-      }
-    }
-  }
-
-  // One profile: its name, how many tools it exposes, and why it exists.
-  component ProfileRow: Item {
-    id: profileRow
-    property var row: null
-
-    implicitHeight: profileContent.implicitHeight + Style.space(4)
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: if (profileRow.row) jackal.copyText(profileRow.row.name, profileRow.row.name + " profile")
-    }
-
-    ColumnLayout {
-      id: profileContent
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(1)
-
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-
-        Text {
-          text: profileRow.row ? profileRow.row.name : ""
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          font.bold: true
-        }
-
-        Item { Layout.fillWidth: true }
-
-        Text {
-          text: profileRow.row ? Model.pluralTools(profileRow.row.count) : ""
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-      }
-
-      Text {
-        Layout.fillWidth: true
-        visible: text !== ""
-        text: profileRow.row ? profileRow.row.meaning : ""
-        color: root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-    }
-  }
-
-  // One family of the declared surface: how many tools sit in it, the two axes
-  // it declares, and — in one sentence — what actually stands behind an answer
-  // from it. The axes are printed side by side and never combined; a ceiling
-  // strictly below the assurance is marked, because that gap is the
-  // anti-laundering boundary and the load-bearing half.
-  //
-  // The mark is deliberately NOT in the failure vocabulary. It is a fact about
-  // a family that is working exactly as designed — it proves more than it is
-  // allowed to decide on — so it is undimmed rather than urgent, and carries
-  // its own glyph rather than the alert triangle a failed probe uses.
-  component RegisterRow: CursorSurface {
-    id: registerRow
-    property var row: null
-    property int rowIndex: 0
-
-    hasCursor: root.cursorActive && root.focusSection === "register" && root.registerIndex === rowIndex
-    foreground: root.foreground
-    implicitHeight: registerContent.implicitHeight + Style.spacing.sm
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: root.setRegisterCursor(registerRow.rowIndex)
-      onClicked: root.activateCursor()
-    }
-
-    ColumnLayout {
-      id: registerContent
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(1)
-
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-
-        Text {
-          text: registerRow.row ? registerRow.row.family : ""
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.body
-          font.bold: true
-        }
-
-        Item { Layout.fillWidth: true }
-
-        Text {
-          text: registerRow.row ? Model.pluralTools(registerRow.row.toolCount) : ""
-          color: root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-      }
-
-      // The two axes, side by side, never merged into one word.
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(6)
-
-        Text {
-          text: "assurance"
-          color: root.foreground
-          opacity: 0.55
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        Text {
-          Layout.fillWidth: true
-          text: registerRow.row ? registerRow.row.assurance : ""
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
-        }
-
-        Text {
-          text: "consequence"
-          color: root.foreground
-          opacity: 0.55
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        Text {
-          text: registerRow.row ? registerRow.row.consequence : ""
-          // Undimmed because a cap is an established, load-bearing fact worth
-          // reading — NOT urgent, which this panel reserves for a refusal or a
-          // downgrade. A ceiling holding is the design working.
-          color: registerRow.row && registerRow.row.capped ? root.foreground : root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        Text {
-          visible: registerRow.row ? registerRow.row.capped === true : false
-          text: Model.GLYPH.capped
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-      }
-
-      // Profile membership is the AGENT SURFACE section's job; repeating it on
-      // every family would be noise. What belongs here is the one thing this
-      // row exists to say: what stands behind an answer from it.
-      Text {
-        Layout.fillWidth: true
-        visible: text !== ""
-        text: registerRow.row ? registerRow.row.backing : ""
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-    }
-  }
-
-  // One executed probe: the class, the tool that ran, and what status it came
-  // back with. A status that differs from the declared one is printed with the
-  // declaration beside it, in the alarm colour, so a downgrade cannot read as a
-  // pass.
-  // One answer JACKAL actually returned: what was asked, what class came back,
-  // and the engine's own line.
-  //
-  // Nothing here is urgent-coloured. A refusal is JACKAL declining to stand
-  // behind a number — the kernel working, not failing — so it is dimmed (it
-  // established nothing) rather than alarmed. Colour here means established or
-  // not established, exactly as the rest of the panel uses it.
-  component ResultRow: Rectangle {
-    id: resultRow
-    property var row: null
-
-    readonly property color tone: row && row.refused ? root.dim : root.telemetry
-
-    implicitHeight: resultContent.implicitHeight + Style.space(14)
-    radius: Style.cornerRadius
-    color: root.panelSurface
-    border.color: Qt.alpha(resultRow.tone, 0.24)
-    border.width: 1
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.bottom: parent.bottom
-      width: Style.space(2)
-      color: resultRow.tone
-      opacity: 0.72
-    }
-
-    Column {
-      id: resultContent
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(10)
-      anchors.right: parent.right
-      anchors.rightMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.space(1)
-
-      RowLayout {
-        width: parent.width
-        spacing: Style.space(6)
-
-        Text {
-          text: resultRow.row ? resultRow.row.tool : ""
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-        }
-
-        Item { Layout.fillWidth: true }
-
-        Text {
-          // The class verbatim, then when. `lane` is omitted: the tool name
-          // already identifies it, and repeating it reads as extra evidence.
-          text: resultRow.row
-                ? resultRow.row.status + "  ·  " + Model.ageText(resultRow.row.atMs, jackal.nowMs)
-                : ""
-          color: resultRow.tone
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-        }
-      }
-
-      Text {
-        visible: resultRow.row ? resultRow.row.request !== "" : false
-        width: parent.width
-        text: resultRow.row ? resultRow.row.request : ""
-        color: root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
-      }
-
-      Text {
-        visible: resultRow.row ? resultRow.row.detail !== "" : false
-        width: parent.width
-        text: resultRow.row ? resultRow.row.detail : ""
-        color: resultRow.row && resultRow.row.refused ? root.dim : root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-        maximumLineCount: 2
-        elide: Text.ElideRight
-      }
-
-      // Only a formal receipt has one. It is the single thing on this row that
-      // can be taken to a front door and checked, so it is shown rather than
-      // summarised away — and its absence on every other row is itself honest.
-      // A retained receipt is the ONLY thing on this row that can be turned back
-      // into evidence. Clicking sends it to the same front door the clipboard uses,
-      // against the same operator-owned expectations — which will refuse unless
-      // they authorize this exact request. That refusal is the correct answer.
-      Item {
-        visible: resultRow.row ? resultRow.row.digest !== "" : false
-        width: parent.width
-        implicitHeight: receiptLine.implicitHeight
-
-        Text {
-          id: receiptLine
-          width: parent.width
-          text: {
-            if (!resultRow.row) return ""
-            var base = "receipt " + Model.shortHash(resultRow.row.digest)
-            return resultRow.row.retained
-                   ? base + "  ·  retained — click to re-verify"
-                   : base + "  ·  not retained"
-          }
-          color: receiptArea.containsMouse ? root.foreground : root.faint
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        MouseArea {
-          id: receiptArea
-          anchors.fill: parent
-          hoverEnabled: true
-          enabled: resultRow.row ? resultRow.row.retained === true : false
-          cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-          onClicked: if (resultRow.row) jackal.verifyReceiptDigest(resultRow.row.digest)
-        }
-      }
-    }
-  }
-
-  component ProbeRow: Item {
-    id: probeRow
-    property var row: null
-    readonly property bool passed: row ? row.pass === true : false
-    readonly property bool downgraded: row ? (row.executed !== row.expected) : false
-
-    implicitHeight: probeLine.implicitHeight + Style.space(4)
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: if (probeRow.row) jackal.copyText(probeRow.row.tool, probeRow.row.tool)
-    }
-
-    RowLayout {
-      id: probeLine
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(10)
-      spacing: Style.space(8)
-
-      Text {
-        text: probeRow.passed ? Model.GLYPH.pass : Model.GLYPH.fail
-        color: probeRow.passed ? root.foreground : root.urgent
-        opacity: probeRow.passed ? 0.85 : 1.0
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        Layout.alignment: Qt.AlignVCenter
-      }
-
-      Text {
-        text: probeRow.row ? probeRow.row.name : ""
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        Layout.preferredWidth: Style.space(96)
-        elide: Text.ElideRight
-      }
-
-      Text {
-        Layout.fillWidth: true
-        horizontalAlignment: Text.AlignRight
-        text: probeRow.row
-              ? probeRow.row.tool + (probeRow.downgraded ? "  ⚠ " + probeRow.row.executed + " ≠ " + probeRow.row.expected : "")
-              : ""
-        color: probeRow.downgraded ? root.urgent : root.faint
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideLeft
-      }
-    }
-  }
-
-  component InfoPair: Row {
-    property string label: ""
-    property string value: ""
-
-    width: parent.width
-    spacing: Style.space(8)
-
-    InfoLabel { text: label }
-    Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - parent.children[2].implicitWidth - parent.spacing * 2); height: 1 }
-    InfoValue { text: value }
-  }
-
-  component InfoLabel: Text {
-    color: root.foreground
-    opacity: 0.6
-    font.family: root.fontFamily
-    font.pixelSize: Style.font.bodySmall
-  }
-
-  component InfoValue: Text {
-    color: root.foreground
-    font.family: root.fontFamily
-    font.pixelSize: Style.font.bodySmall
-    elide: Text.ElideRight
   }
 }
