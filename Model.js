@@ -34,7 +34,11 @@ var GLYPH = {
   // anti-laundering boundary read as a broken tool.
   capped:        String.fromCodePoint(0xF0792),
   refresh:       String.fromCodePoint(0xF0450),  // refresh
-  copy:          String.fromCodePoint(0xF018F)   // content-copy
+  copy:          String.fromCodePoint(0xF018F),  // content-copy
+  // A framed plane, not an arrow: the cockpit is the same accounts at
+  // instrument scale, not a different or "fuller" claim. Deliberately a plain
+  // geometric codepoint so it renders even without the Nerd Font md range.
+  cockpit:       String.fromCodePoint(0x25A3)
 }
 
 // ---------------------------------------------------------------------------
@@ -539,10 +543,10 @@ function sortConsequencesDescending(values) {
 // says so on screen rather than leaving the reader to assume otherwise — an
 // unmarked recall sitting beside verified accounts would borrow their standing.
 
-// Six: enough to see the last few answers at a glance without the section
-// dominating a panel whose other accounts matter more. The ledger keeps far more
+// Ten: the mission-control telemetry column has the vertical room for a real
+// feed while other accounts keep their own columns. The ledger keeps far more
 // (MAX_ENTRIES in the wrapper); this is only what is shown.
-var RESULT_LIMIT = 6
+var RESULT_LIMIT = 10
 
 function parseResults(text) {
   var lines = String(text || "").split("\n")
@@ -805,4 +809,176 @@ function parseNonClaim(text) {
     if (line.indexOf("non-claim=") === 0) return line.slice("non-claim=".length).trim()
   }
   return ""
+}
+
+// ---------------------------------------------------------------------------
+// Live graph deck — untrusted presentation over sealed-evaluator samples.
+//
+// The widget never computes a sample. It substitutes a literal x into the
+// caller's expression, hands whole sweeps to the runtime's own evaluator
+// binary in bounded worksheet batches, and plots exactly what came back.
+// A statement the evaluator refuses (domain error, division by zero) becomes
+// a break in the curve, never an invented value. The rendered pixels remain
+// estimated visualization and are not proof of continuity, roots, extrema,
+// or anything between samples.
+
+var GRAPH_SAMPLE_COUNT = 96
+var GRAPH_CHUNK_SIZE = 12
+var GRAPH_EXPRESSION_LIMIT = 240
+var GRAPH_RANGE_LIMIT = 1000000
+var GRAPH_MIN_SPAN = 0.000001
+
+// Only the expression fragment the engine's eval grammar can hold: digits,
+// the variable x, lowercase function names, +-*/^, parentheses, dots,
+// commas and spaces. Anything else is refused before a subprocess exists.
+function graphExpressionValid(expr) {
+  var text = String(expr || "")
+  if (text.trim() === "" || text.length > GRAPH_EXPRESSION_LIMIT) return false
+  return /^[0-9a-z+\-*/^(). ,]+$/.test(text)
+}
+
+function graphRangeValid(xMin, xMax) {
+  var lo = Number(xMin), hi = Number(xMax)
+  if (!isFinite(lo) || !isFinite(hi)) return false
+  if (Math.abs(lo) > GRAPH_RANGE_LIMIT || Math.abs(hi) > GRAPH_RANGE_LIMIT) return false
+  return hi - lo >= GRAPH_MIN_SPAN
+}
+
+// Plain-decimal rendering the eval grammar accepts: never e-notation.
+function graphNumberText(value) {
+  var text = Number(value).toFixed(8)
+  text = text.replace(/0+$/, "").replace(/\.$/, "")
+  if (text === "-0") text = "0"
+  return text
+}
+
+// Replace each standalone `x` with the parenthesized literal. A character
+// walk instead of lookbehind regex keeps this portable across JS engines.
+function graphSubstitute(expr, xText) {
+  var source = String(expr || "")
+  var out = ""
+  for (var i = 0; i < source.length; i++) {
+    var ch = source[i]
+    if (ch !== "x") { out += ch; continue }
+    var prev = i > 0 ? source[i - 1] : ""
+    var next = i + 1 < source.length ? source[i + 1] : ""
+    var boundary = /[0-9a-z.]/
+    if (boundary.test(prev) || boundary.test(next)) { out += ch; continue }
+    out += "(" + xText + ")"
+  }
+  return out
+}
+
+function graphXValues(xMin, xMax, samples) {
+  var count = Math.max(2, Math.min(GRAPH_SAMPLE_COUNT, Number(samples) || GRAPH_SAMPLE_COUNT))
+  var lo = Number(xMin), hi = Number(xMax)
+  var values = []
+  for (var i = 0; i < count; i++) {
+    values.push(lo + (hi - lo) * i / (count - 1))
+  }
+  return values
+}
+
+// One worksheet argument for a batch of samples: `f(x0); f(x1); ...`.
+function graphWorksheet(expr, xNumbers) {
+  var statements = []
+  for (var i = 0; i < xNumbers.length; i++) {
+    statements.push(graphSubstitute(expr, graphNumberText(xNumbers[i])))
+  }
+  return statements.join("; ")
+}
+
+// Worksheet stdout is one plain value per statement line. Any line that is
+// not a finite number (or any shortfall after a mid-sweep refusal) yields
+// null — a break, not a value.
+function parseWorksheetValues(text, expected) {
+  var lines = String(text || "").split("\n")
+  var values = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (line === "") continue
+    var value = Number(line)
+    values.push(isFinite(value) ? value : null)
+  }
+  while (values.length < expected) values.push(null)
+  return values.slice(0, expected)
+}
+
+function graphMetaText(points) {
+  var total = points.length
+  var refused = 0
+  for (var i = 0; i < total; i++) if (points[i].y === null) refused++
+  var meta = total + " samples · sealed evaluator f64"
+  if (refused > 0) meta += " · " + refused + " refused (curve breaks)"
+  return meta
+}
+
+// Instrument ticks: gridlines land on 1/2/5 × 10^k values so every line the
+// eye crosses names a number a person can hold. Returns the step so labels
+// can choose exactly the decimals the step needs — no ten-digit corner noise.
+function graphTicks(lo, hi, target) {
+  if (!isFinite(lo) || !isFinite(hi) || !(hi > lo)) return { step: 1, ticks: [] }
+  var raw = (hi - lo) / Math.max(2, Number(target) || 5)
+  var magnitude = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10))
+  var norm = raw / magnitude
+  var step = magnitude * (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10)
+  var ticks = []
+  var first = Math.ceil(lo / step - 1e-9) * step
+  for (var value = first; value <= hi + step * 1e-9 && ticks.length < 12; value += step) {
+    var snapped = Math.abs(value) < step * 1e-9 ? 0 : value
+    ticks.push(snapped)
+  }
+  return { step: step, ticks: ticks }
+}
+
+// A tick label carries exactly the precision its step justifies.
+function graphTickLabel(value, step) {
+  var decimals = 0
+  if (isFinite(step) && step > 0 && step < 1) {
+    decimals = Math.min(6, Math.ceil(-Math.log(step) / Math.LN10))
+  }
+  var text = Number(value).toFixed(decimals)
+  if (/^-0(\.0+)?$/.test(text)) text = text.slice(1)
+  return text
+}
+
+// Contiguous refused runs as x spans, widened half a sample step each side,
+// so the band covers the ground the refusal actually owns — the samples that
+// refused — and no more.
+function graphRefusedRuns(points) {
+  var runs = []
+  if (!points || points.length < 2) return runs
+  var half = (points[points.length - 1].x - points[0].x) / (points.length - 1) / 2
+  var start = -1
+  for (var i = 0; i <= points.length; i++) {
+    var refused = i < points.length && points[i].y === null
+    if (refused && start < 0) start = i
+    if (!refused && start >= 0) {
+      runs.push({ x0: points[start].x - half, x1: points[i - 1].x + half })
+      start = -1
+    }
+  }
+  return runs
+}
+
+// The sweep's own extremes — evaluator samples, not window padding — so the
+// instrument can mark where the observed maximum and minimum actually sit.
+function graphExtremes(points) {
+  var min = null, max = null
+  for (var i = 0; i < (points ? points.length : 0); i++) {
+    var p = points[i]
+    if (p.y === null) continue
+    if (min === null || p.y < min.y) min = { x: p.x, y: p.y }
+    if (max === null || p.y > max.y) max = { x: p.x, y: p.y }
+  }
+  return { min: min, max: max }
+}
+
+// Hover readout text: the nearest evaluator sample, named as a sample. The
+// crosshair never interpolates — between samples there is no claim.
+function graphHoverText(point, index, total) {
+  if (!point) return ""
+  var base = "x " + graphNumberText(point.x)
+  if (point.y === null) return base + " · refused · sample " + (index + 1) + "/" + total
+  return base + " · f " + graphNumberText(point.y) + " · sample " + (index + 1) + "/" + total
 }

@@ -48,7 +48,7 @@ if [[ -n $QMLLINT_BIN && -n ${OMARCHY_PATH:-} && -d ${OMARCHY_PATH}/shell ]]; th
     case "$QMLLINT_TMP" in
       "${TMPDIR:-/tmp}"/jackal-omarchy-qmllint.*)
         unlink "$QMLLINT_TMP/imports/qs" 2>/dev/null || true
-        rm -- "$QMLLINT_TMP/JackalPanel.qml" \
+        rm -- "$QMLLINT_TMP/JackalPanel.qml" "$QMLLINT_TMP/Cockpit.qml" \
           "$QMLLINT_TMP/Service.qml" "$QMLLINT_TMP/Model.js" 2>/dev/null || true
         rmdir "$QMLLINT_TMP/imports" "$QMLLINT_TMP" 2>/dev/null || true
         ;;
@@ -58,10 +58,11 @@ if [[ -n $QMLLINT_BIN && -n ${OMARCHY_PATH:-} && -d ${OMARCHY_PATH}/shell ]]; th
   mkdir -p "$QMLLINT_TMP/imports" "$ROOT/build"
   ln -s "$OMARCHY_PATH/shell" "$QMLLINT_TMP/imports/qs"
   cp Panel.qml "$QMLLINT_TMP/JackalPanel.qml"
-  cp Service.qml Model.js "$QMLLINT_TMP/"
+  cp Cockpit.qml Service.qml Model.js "$QMLLINT_TMP/"
 
   if "$QMLLINT_BIN" -I "$QMLLINT_TMP/imports" \
-      "$QMLLINT_TMP/JackalPanel.qml" "$QMLLINT_TMP/Service.qml" \
+      "$QMLLINT_TMP/JackalPanel.qml" "$QMLLINT_TMP/Cockpit.qml" \
+      "$QMLLINT_TMP/Service.qml" \
       >"$QMLLINT_LOG" 2>&1; then
     echo "QMLLINT_PASS diagnostics=$QMLLINT_LOG"
   else

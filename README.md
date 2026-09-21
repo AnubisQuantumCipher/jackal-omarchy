@@ -1,9 +1,11 @@
 # JACKAL Omarchy Edition
 
-An open-source Omarchy bar instrument for the JACKAL mathematical evidence
-kernel. It exposes live function probes, assurance-aware result recall, runtime
-integrity routing, retained-receipt verification, and an explicitly
-non-evidentiary graph preview in a graphite, steel, and crimson interface.
+A full-screen mission-control instrument for the JACKAL mathematical evidence
+kernel on the Omarchy bar. It exposes live function probes, assurance-aware
+result recall, runtime integrity routing, retained-receipt verification, and a
+live — and explicitly non-evidentiary — graph deck that sweeps expressions
+through the runtime's own evaluator, in a graphite, steel, and crimson
+three-column cockpit.
 
 ![JACKAL Omarchy Edition dropdown](preview.png)
 
@@ -16,14 +18,21 @@ THOTH is the name of JACKAL's integrated measurement and provenance subsystem.
 It is not a separate service, personality, arithmetic engine, or source of
 assurance.
 
-The current identity-pinned Codex package exposes one 58-name surface: 41
+The current identity-pinned Codex package exposes one 74-name surface: 41
 sealed-runtime tools, seven THOTH measurement/provenance tools, three advanced
-CAS/graph/nonlinear-certificate tools, and seven linked STEM workflow tools.
-Those are release declarations, not 58 independent engines and not evidence
+CAS/graph/nonlinear-certificate tools, seven linked STEM workflow tools, ten
+certified number-theory workflows, and six certified engineering workflows.
+Those are release declarations, not 74 independent engines and not evidence
 that every function ran in this session. Additive workflows delegate numeric
 fields to admitted sealed-runtime lanes and retain their own orchestration and
 model non-claims. The dropdown therefore keeps **SEALED RUNTIME**, **INTEGRATED
 THOTH**, and the expanded Codex surface visibly separate.
+
+The graph deck's rule is the panel's rule: sweeps are computed by the
+installed runtime's own `jackal-native worksheet` lane in bounded batches, a
+sample the evaluator refuses becomes a break in the curve rather than an
+invented value, and the render stays `status=estimated` visualization —
+pixels are not proof.
 
 ## What this repository contains
 

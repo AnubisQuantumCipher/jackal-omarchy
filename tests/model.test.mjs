@@ -19,6 +19,10 @@ const exported = [
   "FAMILY_ORDER", "familyBacking", "parseInventory", "familyRows",
   "profileRows", "shortHash", "ageText", "pluralTools", "tooltip",
   "parseNonClaim", "parseResults", "pluralAnswers", "RESULT_LIMIT",
+  "GRAPH_SAMPLE_COUNT", "GRAPH_CHUNK_SIZE", "graphExpressionValid",
+  "graphRangeValid", "graphNumberText", "graphSubstitute", "graphXValues",
+  "graphWorksheet", "parseWorksheetValues", "graphMetaText", "graphTicks",
+  "graphTickLabel", "graphRefusedRuns", "graphExtremes", "graphHoverText",
   "VERIFY_SCHEMA", "verifyStatusLabel", "verifyIsAffirmative", "verifyIsAlarming",
   "verifyIsRefusal", "verifyRaisedByText", "authorizedRows", "verifySubject"
 ];
@@ -547,6 +551,68 @@ check("the tooltip never implies more than was established",
 
 check("the tooltip counts classes that executed at their class",
   Model.tooltip("verified", doctor(), NOW, NOW).includes("3/3 classes executed at their class"));
+
+// ---------------------------------------------------------------------------
+// Graph deck: the widget never computes a sample, so everything it MAY do —
+// validate, substitute, batch, parse, tick, band, mark — is pure and pinned.
+
+eq("a plain polynomial expression is accepted",
+  Model.graphExpressionValid("x^6-5*x^4+4*x^2"), true);
+eq("shell metacharacters are refused before any subprocess",
+  Model.graphExpressionValid("x; rm -rf /"), false);
+eq("uppercase drifts outside the eval fragment and is refused",
+  Model.graphExpressionValid("X^2"), false);
+eq("an empty expression is refused", Model.graphExpressionValid("   "), false);
+
+eq("a sane range is accepted", Model.graphRangeValid("-2.6", "2.6"), true);
+eq("a reversed range is refused", Model.graphRangeValid("2", "-2"), false);
+eq("a non-numeric range is refused", Model.graphRangeValid("a", "1"), false);
+
+eq("number text stays plain decimal, never e-notation",
+  Model.graphNumberText(0.0000015), "0.0000015");
+eq("negative zero renders as zero", Model.graphNumberText(-0.0000000001), "0");
+
+eq("standalone x is substituted parenthesized",
+  Model.graphSubstitute("x^2+x", "-1.5"), "(-1.5)^2+(-1.5)");
+eq("the x inside exp is left alone",
+  Model.graphSubstitute("exp(x)", "2"), "exp((2))");
+
+const grid = Model.graphXValues(-2, 2, 5);
+eq("the grid spans exactly the window", `${grid[0]},${grid[grid.length - 1]}`, "-2,2");
+eq("the worksheet is one statement per sample",
+  Model.graphWorksheet("x^2", [-1, 0]), "(-1)^2; (0)^2");
+
+const parsed = Model.parseWorksheetValues("4\n1\n\n0.5\n", 5);
+eq("worksheet lines parse positionally", `${parsed[0]},${parsed[1]},${parsed[2]}`, "4,1,0.5");
+eq("a shortfall after a mid-sweep refusal yields breaks, not values",
+  `${parsed[3]},${parsed[4]}`, "null,null");
+
+check("the meta line counts refusals as curve breaks",
+  Model.graphMetaText([{ x: 0, y: 1 }, { x: 1, y: null }]).includes("1 refused (curve breaks)"));
+
+const ticks = Model.graphTicks(-2.6, 2.6, 7);
+check("ticks land on nice numbers inside the window",
+  ticks.ticks.length >= 5 && ticks.ticks.includes(0) && ticks.ticks.every(t => t >= -2.6 && t <= 2.6),
+  JSON.stringify(ticks));
+eq("tick labels carry only the precision the step justifies",
+  Model.graphTickLabel(2.5000000001e-1 * 10, 0.5), "2.5");
+eq("integer steps label without decimals", Model.graphTickLabel(25, 25), "25");
+eq("tick label negative zero collapses", Model.graphTickLabel(-1e-12, 0.5), "0.0");
+
+const runPoints = [
+  { x: 0, y: 1 }, { x: 1, y: null }, { x: 2, y: null }, { x: 3, y: 4 }
+];
+const runs = Model.graphRefusedRuns(runPoints);
+eq("contiguous refusals form one band", runs.length, 1);
+eq("the band owns the refused samples plus half a step each side",
+  `${runs[0].x0},${runs[0].x1}`, "0.5,2.5");
+
+const ext = Model.graphExtremes(runPoints);
+eq("extremes come from evaluator samples only",
+  `${ext.min.y},${ext.max.y}`, "1,4");
+check("hover text names the sample and never interpolates",
+  Model.graphHoverText({ x: 1, y: null }, 1, 96) === "x 1 · refused · sample 2/96"
+  && Model.graphHoverText({ x: 0.5, y: 4 }, 0, 96) === "x 0.5 · f 4 · sample 1/96");
 
 // ---------------------------------------------------------------------------
 
