@@ -16,7 +16,19 @@ Every colour, size and spacing comes from the active Omarchy theme through the
 shell's `Color` and `Style` singletons; the plugin carries no palette of its
 own, so it looks native under Tokyo Night, Ashfall or anything else you apply.
 
-![JACKAL Omarchy Edition dropdown](preview.png)
+<p align="center">
+  <img src="preview.png" alt="JACKAL bar dropdown — hero, activity instrument, latest answer, recent feed, actions" width="420">
+</p>
+
+![JACKAL cockpit — overview deck](assets/cockpit-overview.png)
+
+| Ledger deck — a row expanded to its fields and non-claims | Graph deck — live sweep through the sealed evaluator |
+|---|---|
+| ![Ledger deck](assets/cockpit-ledger.png) | ![Graph deck](assets/cockpit-graph.png) |
+
+The same surfaces under the Ashfall theme — nothing in the plugin changed, only the theme:
+
+![JACKAL cockpit under the Ashfall theme](assets/cockpit-ashfall.png)
 
 JACKAL's defining rule is preserved at the display boundary: every result keeps
 the status class returned by the kernel, every refusal keeps its named reason,
