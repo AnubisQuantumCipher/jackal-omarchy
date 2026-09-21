@@ -46,6 +46,12 @@ require(manifest["id"] == "khephri.jackal", "permanent plugin id drifted")
 require(manifest["version"] == version, "manifest and VERSION disagree")
 require(manifest["license"] == "MIT", "manifest is not MIT licensed")
 require(manifest["entryPoints"]["barWidget"] == "Panel.qml", "entry point drifted")
+# omacom/omarchy-plugin-marketplace scripts/build-catalog.mjs manifestFieldLimits:
+# a longer field fails "Quattro compatibility" with no stated reason (3.0.0 did).
+for field, limit in (("id", 128), ("name", 120), ("version", 64), ("author", 120),
+                     ("description", 500), ("license", 120)):
+    require(len(str(manifest.get(field, "")).encode("utf-8")) <= limit,
+            f"manifest field {field} exceeds the marketplace {limit}-byte limit")
 
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
 for phrase in (

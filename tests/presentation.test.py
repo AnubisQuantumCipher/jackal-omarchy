@@ -293,6 +293,7 @@ require(
 require(preview.startswith(b"\x89PNG\r\n\x1a\n"), "marketplace preview is not PNG")
 require(preview[12:16] == b"IHDR", "marketplace preview has no leading IHDR")
 preview_width, preview_height = struct.unpack(">II", preview[16:24])
-require(preview_height > preview_width, "marketplace preview is not the captured portrait dropdown")
+require(preview_width > preview_height, "marketplace preview is not the captured landscape cockpit")
+require((ROOT / "assets" / "dropdown.png").is_file(), "the dropdown capture left the README")
 
 print("presentation checks passed")

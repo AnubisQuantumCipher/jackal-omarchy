@@ -1,4 +1,6 @@
-# JACKAL Omarchy Edition 3.0.0
+# JACKAL Omarchy Edition 3.0.1
+
+3.0.1 is 3.0.0 with the full cockpit as the marketplace snapshot and a manifest description inside the marketplace's 500-byte cap (3.0.0 failed its compatibility validation on that cap alone).
 
 This release rebuilds the plugin's three surfaces — bar pill, dropdown and
 full-screen cockpit — on Omarchy's own UI kit and theme singletons. The private

@@ -3,6 +3,17 @@
 All notable changes are recorded here. The project follows Semantic Versioning
 for the Omarchy integration. JACKAL runtime epochs are versioned independently.
 
+## 3.0.1 — 2026-09-20
+
+### Corrected
+
+- The marketplace snapshot is the full cockpit (overview deck) rather than the
+  dropdown; the dropdown capture moved to `assets/dropdown.png` and stays in the
+  README.
+- The manifest description exceeded the marketplace's 500-byte field cap, which
+  fails compatibility validation with no stated reason. Shortened, and the
+  marketplace field caps are now pinned by `tests/repository.test.py`.
+
 ## 3.0.0 — 2026-09-20
 
 ### Changed

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "khephri.jackal",
   "name": "JACKAL + THOTH",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "author": "Khephri Labs / Anubis Quantum Cipher",
   "license": "MIT",
-  "description": "Theme-native evidence surface for JACKAL, built the way Omarchy builds its own panels: a bar pill with a live call count, a keyboard-driven dropdown (hero, activity, latest answer, recent feed, actions), and a full-screen mission-control cockpit with a live activity instrument, status spectrum, tool leaderboard, expandable ledger, live graph deck, session probes, the verification front door, the evidence register and the sealed THOTH identity. Every colour comes from the operator's theme; assurance vocabulary is rendered without promotion.",
+  "description": "Theme-native evidence surface for JACKAL, built on Omarchy's own panel kit: a bar pill with a live call count, a keyboard-driven dropdown (activity, latest answer, recent feed, actions) and a full-screen mission-control cockpit with ledger, live graph deck, probes, verification front door, evidence register and the sealed THOTH identity. Every colour comes from the operator's theme; assurance vocabulary is rendered without promotion.",
   "kinds": [
     "bar-widget",
     "overlay"
