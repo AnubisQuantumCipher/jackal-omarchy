@@ -109,6 +109,7 @@ Panel {
   }
 
   function moveCursor(dy) {
+    pointerGate.reset()
     if (root.focusSection === "feed") {
       var next = root.selectedIndex + dy
       if (next < 0) next = 0
@@ -129,6 +130,13 @@ Panel {
     root.cursorActive = true
     root.focusSection = "feed"
     root.selectedIndex = index
+  }
+
+  // Pointer motion only: rows that move under a parked pointer never steal
+  // the cursor from the keyboard (kit PointerMoveGate, as the clipboard does).
+  function feedPointer(index, item, x, y) {
+    if (!pointerGate.moved(item, { x: x, y: y })) return
+    root.setFeedCursor(index)
   }
 
   function setActionCursor(index) {
@@ -152,6 +160,11 @@ Panel {
   Service {
     id: jackal
     settings: root.settings
+  }
+
+  PointerMoveGate {
+    id: pointerGate
+    referenceItem: column
   }
 
   IpcHandler {
@@ -419,6 +432,7 @@ Panel {
             }
 
             JkResultRow {
+              id: newestRow
               visible: !!root.newest
               width: parent.width
               row: root.newest
@@ -429,7 +443,7 @@ Panel {
               fontFamily: root.fontFamily
               fresh: root.newestFresh
               hasCursor: root.cursorActive && root.focusSection === "feed" && root.selectedIndex === 0
-              onHovered: function(on) { if (on) root.setFeedCursor(0) }
+              onPointerMoved: function(x, y) { root.feedPointer(0, newestRow, x, y) }
               onClicked: root.openCockpit(JSON.stringify({ section: "ledger" }))
             }
           }
@@ -450,6 +464,7 @@ Panel {
             Repeater {
               model: root.recent
               delegate: JkResultRow {
+                id: recentRow
                 required property var modelData
                 required property int index
                 width: parent.width
@@ -462,7 +477,7 @@ Panel {
                 fontFamily: root.fontFamily
                 hasCursor: root.cursorActive && root.focusSection === "feed"
                   && root.selectedIndex === index + 1
-                onHovered: function(on) { if (on) root.setFeedCursor(index + 1) }
+                onPointerMoved: function(x, y) { root.feedPointer(recentRow.index + 1, recentRow, x, y) }
                 onClicked: root.openCockpit(JSON.stringify({ section: "ledger" }))
               }
             }

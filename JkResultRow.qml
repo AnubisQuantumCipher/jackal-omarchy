@@ -24,7 +24,10 @@ CursorSurface {
   property bool showRail: true
 
   signal clicked()
-  signal hovered(bool isHovered)
+  // Real pointer motion over the row, in the row's own coordinates. Consumers
+  // pass it through the kit's PointerMoveGate so delegates sliding under a
+  // stationary pointer (a keyboard scroll) never steal the cursor.
+  signal pointerMoved(real x, real y)
   signal verifyRequested(string digest)
 
   readonly property bool refused: !!(row && row.refused)
@@ -238,7 +241,7 @@ CursorSurface {
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     acceptedButtons: Qt.LeftButton
-    onContainsMouseChanged: root.hovered(containsMouse)
+    onPositionChanged: function(mouse) { root.pointerMoved(mouse.x, mouse.y) }
     onClicked: root.clicked()
   }
 }

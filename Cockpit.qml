@@ -138,11 +138,13 @@ Item {
     root.feedFilter = key
     root.feedCursor = -1
     root.feedExpanded = -1
+    pointerGate.reset()
     if (root.feedView) root.feedView.positionViewAtBeginning()
   }
 
   function moveFeed(delta) {
     if (root.feed.length === 0) return
+    pointerGate.reset()
     var next = root.feedCursor < 0 ? (delta > 0 ? 0 : root.feed.length - 1) : root.feedCursor + delta
     root.feedCursor = Math.max(0, Math.min(root.feed.length - 1, next))
     if (root.feedView) root.feedView.positionViewAtIndex(root.feedCursor, ListView.Contain)
@@ -151,6 +153,14 @@ Item {
   function toggleFeedRow(index) {
     root.feedCursor = index
     root.feedExpanded = root.feedExpanded === index ? -1 : index
+    pointerGate.reset()
+  }
+
+  // Only deliberate pointer movement moves the ledger cursor: a row that
+  // slides under a parked pointer during a keyboard scroll is ignored.
+  function feedPointer(index, item, x, y) {
+    if (!pointerGate.moved(item, { x: x, y: y })) return
+    root.feedCursor = index
   }
 
   // ---------------------------------------------------------------- settings
@@ -271,6 +281,11 @@ Item {
     root.close()
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide(root.pluginId)
+  }
+
+  PointerMoveGate {
+    id: pointerGate
+    referenceItem: card
   }
 
   Service {
@@ -1069,6 +1084,7 @@ Item {
         cacheBuffer: 800
 
         delegate: JkResultRow {
+          id: feedRow
           required property var modelData
           required property int index
           width: ListView.view.width - Style.space(10)
@@ -1081,7 +1097,7 @@ Item {
           expanded: root.feedExpanded === index
           hasCursor: root.feedCursor === index
           fresh: index === 0 && root.feedFilter === "all" && root.newestFresh
-          onHovered: function(on) { if (on) root.feedCursor = index }
+          onPointerMoved: function(x, y) { root.feedPointer(feedRow.index, feedRow, x, y) }
           onClicked: root.toggleFeedRow(index)
           onVerifyRequested: function(digest) {
             jackal.verifyReceiptDigest(digest)
