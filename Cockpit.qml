@@ -123,6 +123,9 @@ Item {
   property string feedFilter: "all"
   property int feedCursor: -1
   property int feedExpanded: -1
+  // The ledger deck's ListView, registered by the deck when it is built: an id
+  // declared inside an inline component is not reachable from this scope.
+  property var feedView: null
   readonly property var feed: Model.feedRows(jackal.allResults, root.feedFilter, 400)
   readonly property var feedFilters: [
     { key: "all", label: "All", count: root.allSummary.allTotal },
@@ -135,14 +138,14 @@ Item {
     root.feedFilter = key
     root.feedCursor = -1
     root.feedExpanded = -1
-    if (feedList) feedList.positionViewAtBeginning()
+    if (root.feedView) root.feedView.positionViewAtBeginning()
   }
 
   function moveFeed(delta) {
     if (root.feed.length === 0) return
     var next = root.feedCursor < 0 ? (delta > 0 ? 0 : root.feed.length - 1) : root.feedCursor + delta
     root.feedCursor = Math.max(0, Math.min(root.feed.length - 1, next))
-    if (feedList) feedList.positionViewAtIndex(root.feedCursor, ListView.Contain)
+    if (root.feedView) root.feedView.positionViewAtIndex(root.feedCursor, ListView.Contain)
   }
 
   function toggleFeedRow(index) {
@@ -239,12 +242,24 @@ Item {
     // Name the provisioner and the tree state once per session; the pinned
     // tree check is a separate observation from the doctor's probes.
     if (!jackal.verifyReport) jackal.runVerify()
-    // Mission control should not open on an empty instrument. This is a sweep
-    // of the sealed evaluator like any other — still non-evidentiary, still
-    // labelled as such on the canvas.
+    root.ensureSweep()
+    Qt.callLater(function() { keyHost.forceActiveFocus() })
+  }
+
+  // Mission control should not open on an empty instrument. This is a sweep of
+  // the sealed evaluator like any other — still non-evidentiary, still labelled
+  // as such on the canvas. On a cold open the doctor has not yet named the
+  // runtime, so the sweep waits for it rather than refusing into an error the
+  // operator did not cause.
+  function ensureSweep() {
+    if (!root.opened || jackal.runtimeDir === "") return
     if (jackal.graphPoints.length === 0 && !jackal.graphBusy)
       jackal.plotGraph(jackal.graphExpression, jackal.graphXMin, jackal.graphXMax)
-    Qt.callLater(function() { keyHost.forceActiveFocus() })
+  }
+
+  Connections {
+    target: jackal
+    function onRuntimeDirChanged() { root.ensureSweep() }
   }
 
   function close() {
@@ -1045,6 +1060,7 @@ Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
         model: root.feed
+        Component.onCompleted: root.feedView = feedList
         clip: true
         spacing: Style.space(2)
         boundsBehavior: Flickable.StopAtBounds
