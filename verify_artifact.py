@@ -344,7 +344,7 @@ def run_front_door(runtime: Path, tool: str, args: dict, timeout: int) -> dict:
                 or "error" in envelope):
             raise Refusal("widget-front-door-unparsable", "invalid RPC response")
         result = envelope.get("result")
-    except ValueError:
+    except (ValueError, Refusal):
         raise Refusal("widget-front-door-unparsable", "invalid RPC JSON") from None
     if not isinstance(result, dict) or "status" not in result:
         raise Refusal("widget-front-door-unparsable", "no status field")

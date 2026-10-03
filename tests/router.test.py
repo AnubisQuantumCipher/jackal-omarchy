@@ -125,6 +125,19 @@ class RouterTests(unittest.TestCase):
                 self.assertEqual(caught.exception.reason, "widget-front-door-unparsable")
                 self.assertNotIn('private-test', str(caught.exception))
 
+    def test_duplicate_response_keys_do_not_escape_into_refusal_detail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.parent.mkdir(parents=True)
+            response = '{"private-test": 1, "private-test": 2}'
+            launcher.write_text("#!/usr/bin/python3\nprint(" + repr(response) + ")\n")
+            launcher.chmod(0o700)
+            with self.assertRaises(router.Refusal) as caught:
+                router.run_front_door(runtime, "jackal_verify_receipt", {}, 5)
+            self.assertEqual(caught.exception.reason, "widget-front-door-unparsable")
+            self.assertEqual(caught.exception.detail, "invalid RPC JSON")
+
     def test_invalid_timeout_is_named_widget_refusal(self) -> None:
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
