@@ -78,6 +78,19 @@ def make_runtime(base: Path) -> tuple[Path, Path]:
 
 
 class OperatorTests(unittest.TestCase):
+    def test_call_tool_uses_private_stdin_and_preserves_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, locator = make_runtime(Path(directory))
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.write_text("#!/usr/bin/python3\nimport sys,json\n"
+                "assert sys.argv[1:] == ['stdio']\n"
+                "request=json.loads(sys.stdin.read())\n"
+                "assert request['params'] == {'secret': 'test-only'}\n"
+                "print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'status':'refused','reason':'test-only'}}))\n")
+            context = operator.RuntimeContext(runtime, launcher, None, {"epoch": "test"})
+            self.assertEqual(operator.call_tool(context, "jackal_verify_receipt",
+                {"secret": "test-only"}, config={}), {"status": "refused", "reason": "test-only"})
+
     def test_version_is_repository_version(self) -> None:
         result = subprocess.run(
             [str(CLI), "--version"], capture_output=True, text=True, check=False

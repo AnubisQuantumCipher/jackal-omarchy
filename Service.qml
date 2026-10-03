@@ -228,7 +228,7 @@ Item {
     }
     resultsReadQueued = false
     resultsProcess.reset()
-    resultsProcess.command = ["/usr/bin/cat", "--", resultsPath]
+    resultsProcess.command = ["/usr/bin/python3", "-B", pluginDir + "/read_ledger.py", resultsPath]
     resultsProcess.running = true
   }
 
@@ -435,6 +435,8 @@ Item {
   // replace sequence used by the ledger writer.
   FileView {
     id: resultsFileWatch
+    preload: false
+    blockAllReads: true
     path: root.resultsPath
     watchChanges: true
     onFileChanged: resultsRefresh.restart()

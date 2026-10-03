@@ -249,7 +249,9 @@ def call_tool(
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     try:
         result = subprocess.run(
-            [str(context.launcher), "call", name, json.dumps(arguments, separators=(",", ":"))],
+            [str(context.launcher), "stdio"],
+            input=json.dumps({"jsonrpc": "2.0", "id": "operator-call",
+                              "method": name, "params": arguments}) + "\n",
             capture_output=True,
             text=True,
             timeout=COMMAND_TIMEOUT_SEC,
@@ -263,13 +265,19 @@ def call_tool(
             "detail": type(error).__name__,
         }
     try:
-        payload = json.loads(result.stdout)
+        envelope = json.loads(result.stdout)
+        if (not isinstance(envelope, dict)
+                or envelope.get("jsonrpc") != "2.0"
+                or envelope.get("id") != "operator-call"
+                or "error" in envelope):
+            return {"status": "transport-refused", "reason": "tool-rpc-invalid"}
+        payload = envelope.get("result")
     except json.JSONDecodeError:
         return {
             "status": "transport-refused",
             "reason": "tool-output-unparsable",
             "returncode": result.returncode,
-            "stderr": result.stderr[:300],
+            "detail": "invalid RPC JSON",
         }
     return payload if isinstance(payload, dict) else {
         "status": "transport-refused",

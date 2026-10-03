@@ -322,22 +322,30 @@ def run_front_door(runtime: Path, tool: str, args: dict, timeout: int) -> dict:
         raise Refusal("widget-runtime-absent", f"no launcher at {launcher}")
     try:
         proc = subprocess.run(
-            [str(launcher), "call", tool, json.dumps(args, sort_keys=True)],
+            [str(launcher), "stdio"],
+            input=json.dumps({"jsonrpc": "2.0", "id": "widget-verify",
+                              "method": tool, "params": args}, sort_keys=True) + "\n",
             capture_output=True, text=True, timeout=timeout, cwd=str(runtime),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise Refusal("widget-front-door-failed", f"{type(exc).__name__}: {exc}") from None
+        raise Refusal("widget-front-door-failed", type(exc).__name__) from None
 
     stdout = (proc.stdout or "").strip()
     if not stdout:
         raise Refusal(
             "widget-front-door-unparsable",
-            (proc.stderr or "").strip()[:300] or "the front door emitted nothing",
+            "the front door emitted nothing",
         )
     try:
-        result = json.loads(stdout)
+        envelope = strict_json(stdout, "front door", "widget-front-door-unparsable")
+        if (not isinstance(envelope, dict)
+                or envelope.get("jsonrpc") != "2.0"
+                or envelope.get("id") != "widget-verify"
+                or "error" in envelope):
+            raise Refusal("widget-front-door-unparsable", "invalid RPC response")
+        result = envelope.get("result")
     except ValueError:
-        raise Refusal("widget-front-door-unparsable", stdout[:300]) from None
+        raise Refusal("widget-front-door-unparsable", "invalid RPC JSON") from None
     if not isinstance(result, dict) or "status" not in result:
         raise Refusal("widget-front-door-unparsable", "no status field")
     return result
