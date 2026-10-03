@@ -138,6 +138,26 @@ class RouterTests(unittest.TestCase):
             self.assertEqual(caught.exception.reason, "widget-front-door-unparsable")
             self.assertEqual(caught.exception.detail, "invalid RPC JSON")
 
+    def test_startup_refusal_preserves_only_recognized_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.parent.mkdir(parents=True)
+            for reason in ("plugin-manifest-missing", "plugin-runtime-unreadable",
+                           "plugin-manifest-changed", "plugin-bundle-mismatch", "private-test"):
+                response = {"jsonrpc": "2.0", "id": None,
+                            "error": {"code": -32000, "message": reason + ": private-test"}}
+                launcher.write_text("#!/usr/bin/python3\nimport sys\nprint(" +
+                                    repr(json.dumps(response)) + ")\nsys.exit(1)\n")
+                launcher.chmod(0o700)
+                if reason == "private-test":
+                    with self.assertRaises(router.Refusal) as caught:
+                        router.run_front_door(runtime, "jackal_verify_receipt", {}, 5)
+                    self.assertNotIn("private-test", caught.exception.detail)
+                else:
+                    self.assertEqual(router.run_front_door(runtime, "jackal_verify_receipt", {}, 5),
+                                     {"status": "refused", "reason": reason, "detail": ""})
+
     def test_invalid_timeout_is_named_widget_refusal(self) -> None:
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
