@@ -154,6 +154,17 @@ expectations do not authorize that request.
 
 ## Configure
 
+The artifact router and operator CLI send requests to Hermes over a private
+stdin pipe instead of placing JSON in process arguments. Malformed transport
+responses are refused without echoing their contents. This removes the
+plugin-to-Hermes disclosure reported in marketplace review #7904.
+
+This does not yet close the end-to-end privacy requirement: the current
+runtime can still pass request fields to checker child processes in arguments.
+The separate private-runtime work must preserve historical checker identities
+and accepted receipts before it can replace that path. This plugin change alone
+does not qualify the runtime or establish marketplace verification.
+
 The panel settings are managed through Omarchy:
 
 | Setting | Default | Meaning |
