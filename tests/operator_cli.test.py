@@ -78,12 +78,42 @@ def make_runtime(base: Path) -> tuple[Path, Path]:
 
 
 class OperatorTests(unittest.TestCase):
+    def test_call_tool_uses_private_stdin_and_preserves_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, locator = make_runtime(Path(directory))
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.write_text("#!/usr/bin/python3\nimport sys,json\n"
+                "assert sys.argv[1:] == ['stdio']\n"
+                "request=json.loads(sys.stdin.read())\n"
+                "assert request['params'] == {'secret': 'test-only'}\n"
+                "print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'status':'refused','reason':'test-only'}}))\n")
+            context = operator.RuntimeContext(runtime, launcher, None, {"epoch": "test"})
+            self.assertEqual(operator.call_tool(context, "jackal_verify_receipt",
+                {"secret": "test-only"}, config={}), {"status": "refused", "reason": "test-only"})
+
     def test_version_is_repository_version(self) -> None:
         result = subprocess.run(
             [str(CLI), "--version"], capture_output=True, text=True, check=False
         )
         self.assertEqual(result.returncode, 0)
         self.assertIn((ROOT / "VERSION").read_text().strip(), result.stdout)
+
+    def test_startup_refusal_preserves_only_recognized_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, _locator = make_runtime(Path(directory))
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            context = operator.RuntimeContext(runtime, launcher, None, {"epoch": "test"})
+            for reason in ("plugin-manifest-missing", "plugin-runtime-unreadable",
+                           "plugin-manifest-changed", "plugin-bundle-mismatch", "private-test"):
+                response = {"jsonrpc": "2.0", "id": None,
+                            "error": {"code": -32000, "message": reason + ": private-test"}}
+                launcher.write_text("#!/usr/bin/python3\nimport sys\nprint(" +
+                                    repr(json.dumps(response)) + ")\nsys.exit(1)\n")
+                result = operator.call_tool(context, "jackal_verify_receipt", {}, config={})
+                if reason == "private-test":
+                    self.assertEqual(result, {"status": "transport-refused", "reason": "tool-rpc-invalid"})
+                else:
+                    self.assertEqual(result, {"status": "refused", "reason": reason, "detail": ""})
 
     def test_source_has_no_developer_home_or_fixed_runtime(self) -> None:
         source = CLI.read_text(encoding="utf-8")

@@ -322,22 +322,42 @@ def run_front_door(runtime: Path, tool: str, args: dict, timeout: int) -> dict:
         raise Refusal("widget-runtime-absent", f"no launcher at {launcher}")
     try:
         proc = subprocess.run(
-            [str(launcher), "call", tool, json.dumps(args, sort_keys=True)],
+            [str(launcher), "stdio"],
+            input=json.dumps({"jsonrpc": "2.0", "id": "widget-verify",
+                              "method": tool, "params": args}, sort_keys=True) + "\n",
             capture_output=True, text=True, timeout=timeout, cwd=str(runtime),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise Refusal("widget-front-door-failed", f"{type(exc).__name__}: {exc}") from None
+        raise Refusal("widget-front-door-failed", type(exc).__name__) from None
 
     stdout = (proc.stdout or "").strip()
     if not stdout:
         raise Refusal(
             "widget-front-door-unparsable",
-            (proc.stderr or "").strip()[:300] or "the front door emitted nothing",
+            "the front door emitted nothing",
         )
     try:
-        result = json.loads(stdout)
-    except ValueError:
-        raise Refusal("widget-front-door-unparsable", stdout[:300]) from None
+        envelope = strict_json(stdout, "front door", "widget-front-door-unparsable")
+        # Sealed Hermes runtimes report startup refusals before reading a
+        # request, with a null id. Preserve only their audited reason names.
+        if (proc.returncode == 1 and isinstance(envelope, dict)
+                and set(envelope) == {"jsonrpc", "id", "error"}
+                and envelope.get("jsonrpc") == "2.0" and envelope.get("id") is None):
+            error = envelope["error"]
+            if (isinstance(error, dict) and set(error) == {"code", "message"}
+                    and error.get("code") == -32000 and isinstance(error.get("message"), str)):
+                reason = error["message"].partition(": ")[0]
+                if reason in {"plugin-manifest-missing", "plugin-runtime-unreadable",
+                              "plugin-manifest-changed", "plugin-bundle-mismatch"}:
+                    return {"status": "refused", "reason": reason, "detail": ""}
+        if (not isinstance(envelope, dict)
+                or envelope.get("jsonrpc") != "2.0"
+                or envelope.get("id") != "widget-verify"
+                or "error" in envelope):
+            raise Refusal("widget-front-door-unparsable", "invalid RPC response")
+        result = envelope.get("result")
+    except (ValueError, Refusal):
+        raise Refusal("widget-front-door-unparsable", "invalid RPC JSON") from None
     if not isinstance(result, dict) or "status" not in result:
         raise Refusal("widget-front-door-unparsable", "no status field")
     return result

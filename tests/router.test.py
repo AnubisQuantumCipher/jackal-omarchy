@@ -91,6 +91,73 @@ class RouterTests(unittest.TestCase):
                 router.run_front_door(runtime, "jackal_verify_receipt", {}, 1)
             self.assertEqual(caught.exception.reason, "widget-runtime-absent")
 
+    def test_private_stdio_preserves_verdict_and_hides_payload_from_argv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_text("#!/usr/bin/python3\n"
+                "import json,sys\n"
+                "assert sys.argv[1:] == ['stdio']\n"
+                "request=json.loads(sys.stdin.read())\n"
+                "assert request['method'] == 'jackal_verify_receipt'\n"
+                "assert request['params'] == {'receipt': 'private-test', 'expected_expression': 'operator-test'}\n"
+                "print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'status':'verified','non_claims':['test-only']}}))\n")
+            launcher.chmod(0o700)
+            result = router.run_front_door(runtime, "jackal_verify_receipt",
+                {"receipt": "private-test", "expected_expression": "operator-test"}, 5)
+            self.assertEqual(result, {"status": "verified", "non_claims": ["test-only"]})
+
+    def test_rpc_errors_and_wrong_ids_refuse_without_echoing_private_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.parent.mkdir(parents=True)
+            for response in [
+                {'jsonrpc': '2.0', 'id': 'wrong', 'result': {'status': 'verified'}},
+                {'jsonrpc': '2.0', 'id': 'widget-verify', 'error': {'message': 'private-test'}},
+                {'jsonrpc': '2.0', 'id': 'widget-verify', 'result': []},
+            ]:
+                launcher.write_text("#!/usr/bin/python3\nprint(" + repr(json.dumps(response)) + ")\n")
+                launcher.chmod(0o700)
+                with self.assertRaises(router.Refusal) as caught:
+                    router.run_front_door(runtime, "jackal_verify_receipt", {}, 5)
+                self.assertEqual(caught.exception.reason, "widget-front-door-unparsable")
+                self.assertNotIn('private-test', str(caught.exception))
+
+    def test_duplicate_response_keys_do_not_escape_into_refusal_detail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.parent.mkdir(parents=True)
+            response = '{"private-test": 1, "private-test": 2}'
+            launcher.write_text("#!/usr/bin/python3\nprint(" + repr(response) + ")\n")
+            launcher.chmod(0o700)
+            with self.assertRaises(router.Refusal) as caught:
+                router.run_front_door(runtime, "jackal_verify_receipt", {}, 5)
+            self.assertEqual(caught.exception.reason, "widget-front-door-unparsable")
+            self.assertEqual(caught.exception.detail, "invalid RPC JSON")
+
+    def test_startup_refusal_preserves_only_recognized_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            launcher = runtime / "plugin/hermes/jackal_hermes"
+            launcher.parent.mkdir(parents=True)
+            for reason in ("plugin-manifest-missing", "plugin-runtime-unreadable",
+                           "plugin-manifest-changed", "plugin-bundle-mismatch", "private-test"):
+                response = {"jsonrpc": "2.0", "id": None,
+                            "error": {"code": -32000, "message": reason + ": private-test"}}
+                launcher.write_text("#!/usr/bin/python3\nimport sys\nprint(" +
+                                    repr(json.dumps(response)) + ")\nsys.exit(1)\n")
+                launcher.chmod(0o700)
+                if reason == "private-test":
+                    with self.assertRaises(router.Refusal) as caught:
+                        router.run_front_door(runtime, "jackal_verify_receipt", {}, 5)
+                    self.assertNotIn("private-test", caught.exception.detail)
+                else:
+                    self.assertEqual(router.run_front_door(runtime, "jackal_verify_receipt", {}, 5),
+                                     {"status": "refused", "reason": reason, "detail": ""})
+
     def test_invalid_timeout_is_named_widget_refusal(self) -> None:
         output = io.StringIO()
         with contextlib.redirect_stdout(output):

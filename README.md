@@ -79,7 +79,7 @@ relabeling or rebuilding the evidence kernel.
 - A supported JACKAL runtime installed through the JACKAL Codex plugin.
 - `/usr/bin/python3` with Python 3.10 or newer.
 - `/usr/bin/wl-copy` for copy actions.
-- `/usr/bin/cat` for reading local runtime declarations and ledger rows.
+- `/usr/bin/cat` for reading local runtime declarations.
 - The `codex` CLI for automatic discovery of the installed JACKAL provisioner.
 - Anubis and Z3 only for the JACKAL lanes that declare those dependencies.
 
@@ -152,6 +152,13 @@ sent back through the real verification front door; only the returned verdict
 applies, and a refusal there is the correct answer when the operator's
 expectations do not authorize that request.
 
+The artifact router and operator CLI send tool requests over the runtime's
+private stdin pipe, never as a JSON command-line argument. This protects the
+plugin-to-Hermes hop. It does not establish confidentiality of every runtime
+child process: the current runtime still forwards some request fields to
+checker command lines. Closing that remaining path requires a separately
+verified runtime update.
+
 ## Configure
 
 The panel settings are managed through Omarchy:
@@ -195,6 +202,13 @@ The panel reads `~/.local/state/jackal/results.jsonl` when present. To populate
 it, configure an MCP client to start the bundled `bin/jackal-mcp-ledger` instead
 of starting JACKAL directly. The wrapper forwards every byte before performing
 best-effort recording and starts no alternative mathematical engine.
+
+The panel reader admits only regular, nonsymlink UTF-8 files within
+`MAX_LEDGER_BYTES` in `read_ledger.py`. It checks both the opened file size and
+a bounded read, so concurrent growth cannot reach QML without a size check.
+Oversized or unreadable input clears the displayed ledger; partial history is
+not shown as complete. The QML watcher only watches changes and cannot load
+the file independently.
 
 The wrapper resolves the JACKAL launcher in this order:
 

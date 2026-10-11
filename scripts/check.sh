@@ -14,6 +14,7 @@ python3 -B tests/ledger.test.py --fast
 node tests/model.test.mjs
 ./scripts/check-formal.sh
 python3 -B tests/router.test.py
+python3 -B tests/ledger_reader.test.py
 
 bash -n scripts/check.sh
 bash -n scripts/check-formal.sh
